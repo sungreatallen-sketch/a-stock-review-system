@@ -74,3 +74,10 @@ config/         config.yaml（MCP 顺序、Web 端口等）
 - 复盘/预测时自动结算上期 + 自动记录本期
 - 飞书「结算」「命中率」命令；launchd 工作日 15:30 自动结算兜底
 - 详见 docs/M4模拟盘自动化.md
+
+## 防休眠（插电合盖运行）
+- 独立 launchd 服务 `com.ashare.caffeinate` 常驻运行 `caffeinate -dims`（KeepAlive，bot 重启也不影响）
+- bot 启动脚本同样带 `caffeinate -dims`
+- **一次性加固（可选，需密码）**：Terminal 运行
+  `sudo pmset -c disablesleep 1`
+  这样插电合盖时 macOS 系统层面绝不休眠，agent 持续运行

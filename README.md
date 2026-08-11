@@ -48,3 +48,11 @@ config/         config.yaml（MCP 顺序、Web 端口等）
 - [ ] 消息面扫描（公告/新闻/龙虎榜）→ DeepSeek V4 Flash 研判出 3 只
 - [ ] 历史回测框架（收盘买/次日开盘卖）
 - [ ] 飞书命令：`复盘` / `预测`
+
+## 飞书接入（已完成）
+- 独立应用「A股复盘预测助手」已创建并发布：App ID cli_aaf063d9cff89cb0（凭证在 .env）
+- 已配置：机器人能力、消息权限、长连接事件订阅（im.message.receive_v1）
+- 后台服务（launchd 开机自启 + 崩溃自恢复）：
+  - com.ashare.bot    飞书机器人长连接（日志 /Users/yage/ashare-logs/bot.log）
+  - com.ashare.server 报告 Web 服务 :8787（日志 /Users/yage/ashare-logs/server.log）
+- 使用：飞书内搜索并添加「A股复盘预测助手」机器人，发「复盘」即返回收盘复盘卡片+报告链接

@@ -65,7 +65,6 @@ def main():
         from app.predict.backtest import Backtest
         from app.predict.cache import MCPCache, CachedMcp
         from app.mcp_client import McpClient
-        from app.config import load_config, paths
         logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                             format="%(asctime)s %(levelname)s %(name)s: %(message)s")
         cfg = load_config()
@@ -99,7 +98,6 @@ def main():
         from app.predict.daily import predict as predict_today
         from app.predict.cache import MCPCache, CachedMcp
         from app.mcp_client import McpClient
-        from app.config import load_config, paths
         cfg = load_config()
         m = cfg["mcp"]
         mcp = McpClient(m["proxy_url"], m.get("token", ""), m["workbuddy_log_dir"])
@@ -121,7 +119,6 @@ def main():
         from app.predict.daily import predict as predict_today
         from app.predict.cache import MCPCache, CachedMcp
         from app.mcp_client import McpClient
-        from app.config import load_config, paths
         cfg = load_config()
         m = cfg["mcp"]
         mcp = McpClient(m["proxy_url"], m.get("token", ""), m["workbuddy_log_dir"])

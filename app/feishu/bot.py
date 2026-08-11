@@ -115,117 +115,67 @@ def report_link(date_str: str) -> str:
     return f"http://{host}:{port}/report/{date_str}"
 
 
-def _review_and_reply(client: lark.Client, message_id: str, chat_id: str):
-    """后台执行：采集→验证→生成报告→回复卡片+链接"""
-    try:
-        reply_text(client, message_id, "收到！正在采集今日收盘数据并交叉验证，约 20~40 秒，请稍候…")
-        from ..workflow import run_review
-        p = paths()
-        report = run_review(include_prediction=True)
 
-        link = report_link(report['date'])
+def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "复盘"):
+    """统一流程：复盘 + 标的预测 一体，回复合并卡片 + 完整 HTML 报告链接"""
+    try:
+        reply_text(client, message_id, "收到！正在生成完整报告（收盘复盘 + 次日标的预测），约 20~40 秒…")
+        from ..workflow import run_review
+        report = run_review(include_prediction=True)
+        date_str = report["date"]
+        link = report_link(date_str)
+
         mi = report["market_index"]
         emo = report["emotion"]
+        pred = report.get("prediction") or {}
+        targets = pred.get("targets") or []
         summary = (
-            f"**A股收盘复盘 · {report['date']}**\n"
-            f"上证 {mi.get('上证指数', {}).get('收盘价')} "
+            f"**A股收盘复盘 + 次日标的预测 · {date_str}**\n"
+            f"**市场**：上证 {mi.get('上证指数', {}).get('收盘价')} "
             f"({mi.get('上证指数', {}).get('涨跌幅%')}%)｜创业板 "
             f"{mi.get('创业板指', {}).get('收盘价')} ({mi.get('创业板指', {}).get('涨跌幅%')}%)\n"
-            f"涨停 {emo.get('涨停数量')} / 跌停 {emo.get('跌停数量')} / "
+            f"情绪：涨停 {emo.get('涨停数量')} / 跌停 {emo.get('跌停数量')} / "
             f"炸板 {emo.get('炸板数量')} / 最高连板 {emo.get('最高连板')}"
         )
+        if pred.get("market_view"):
+            summary += f"\n📌 市场判断：{pred['market_view']}"
+        if targets:
+            t_lines = ["\n**次日标的（收盘价附近买入，次日开盘卖出）**"]
+            for i, t in enumerate(targets, 1):
+                buy = t.get("参考买入价(收盘)")
+                conf = t.get("confidence") or "中"
+                t_lines.append(f"{i}. **{t.get('name')}**（{t.get('code')}）· 置信{conf}"
+                               f"｜参考买入 {buy}\n   逻辑：{t.get('reason')}\n   ⚠️风险：{t.get('risk')}")
+            summary += "\n" + "\n".join(t_lines)
+        summary += "\n⚠️ 仅供研究参考，不构成投资建议。详细图表见完整 HTML 报告。"
         card = {
             "config": {"wide_screen_mode": True},
-            "header": {"title": {"tag": "plain_text", "content": f"A股收盘复盘 · {report['date']}"},
+            "header": {"title": {"tag": "plain_text", "content": f"A股复盘 + 标的预测 · {date_str}"},
                        "template": "red"},
             "elements": [
                 {"tag": "markdown", "content": summary},
                 {"tag": "action", "actions": [
-                    {"tag": "button", "text": {"tag": "plain_text", "content": "打开可视化报告"},
+                    {"tag": "button", "text": {"tag": "plain_text", "content": "打开完整可视化报告"},
                      "type": "primary", "url": link}]},
                 {"tag": "markdown",
-                 "content": "所有数据均来自真实可追溯来源（东财公开数据 + 通达信/同舟/Wind MCP 交叉验证）。"},
+                 "content": "数据来源：东财公开数据 + 通达信/同舟/Wind MCP 交叉验证；消息面：同舟 doc_search。"},
             ],
         }
         reply_card(client, message_id, card)
-        logger.info("复盘完成并已回复: %s", report["date"])
+        logger.info("完整报告(%s)已回复: %s", mode, date_str)
     except Exception as e:
-        logger.exception("复盘失败")
-        reply_text(client, message_id, f"复盘执行失败：{e}\n（查看 Mac 上日志排查）")
+        logger.exception("%s失败", mode)
+        reply_text(client, message_id, f"{mode}执行失败：{e}\n（查看 Mac 上日志排查）")
+
+
+def _review_and_reply(client: lark.Client, message_id: str, chat_id: str):
+    """复盘：完整报告（复盘+预测一体）"""
+    _full_report_and_reply(client, message_id, mode="复盘")
 
 
 def _predict_and_reply(client: lark.Client, message_id: str):
-    """后台执行：生成 Top3 标的预测并回复"""
-    try:
-        reply_text(client, message_id, "收到！正在生成明日标的预测（板块+个股+资金+量比过滤）…")
-        from ..predict.cache import MCPCache, CachedMcp
-        from ..predict.daily import predict as predict_today
-        from ..mcp_client import McpClient
-        from ..config import paths as get_paths, load_config
-
-        cfg = load_config()
-        m = cfg["mcp"]
-        mcp = McpClient(m["proxy_url"], m.get("token", ""), m["workbuddy_log_dir"])
-        p = get_paths()
-        cached = CachedMcp(mcp, MCPCache(p["data"] / "mcp_cache.db"))
-        result = predict_today(cached)
-        mv = result.get("market_view") or ""
-        lines = [f"**A股次日标的预测 · 基于 {result['date']} 收盘**",
-                 f"策略：{result['strategy']}",
-                 f"强势板块：{'、'.join(result['top_sectors'][:5])}"]
-        if mv:
-            lines.append(f"\n📌 市场判断：{mv}")
-        for i, t in enumerate(result["targets"], 1):
-            buy = t.get("参考买入价(收盘)")
-            conf = t.get("confidence") or "中"
-            lines.append(f"\n**{i}. {t.get('name')}（{t.get('code')}）· 置信{conf}**\n"
-                         f"参考买入价（收盘）：{buy}\n"
-                         f"逻辑：{t.get('reason')}\n"
-                         f"⚠️ 风险：{t.get('risk')}")
-        lines.append("\n⚠️ 仅供研究参考，不构成投资建议。卖出：次日开盘后。")
-        card = {
-            "config": {"wide_screen_mode": True},
-            "header": {"title": {"tag": "plain_text", "content": f"次日标的预测 · {result['date']}"},
-                       "template": "blue"},
-            "elements": [{"tag": "markdown", "content": "\n".join(lines)}],
-        }
-        reply_card(client, message_id, card)
-    except Exception as e:
-        logger.exception("预测失败")
-        reply_text(client, message_id, f"预测执行失败：{e}")
-
-
-def _settle_and_reply(client: lark.Client, message_id: str):
-    try:
-        reply_text(client, message_id, "收到！正在结算最近一期预测并统计…")
-        from ..predict.track import Tracker
-        from ..predict.cache import MCPCache, CachedMcp
-        from ..mcp_client import McpClient
-        from ..config import paths as get_paths, load_config
-        cfg = load_config()
-        m = cfg["mcp"]
-        mcp = McpClient(m["proxy_url"], m.get("token", ""), m["workbuddy_log_dir"])
-        p = get_paths()
-        cached = CachedMcp(mcp, MCPCache(p["data"] / "mcp_cache.db"))
-        tr = Tracker(p["data"])
-        res = tr.settle_pending(cached)
-        if res.get("settled"):
-            st = tr.stats()
-            lines = [f"✅ 已结算 {res['date']} 期预测（卖出日 {res.get('sell_date')}）",
-                     f"本期结算 {res['settled']} 只" + (f"，{len(res['missing_open'])} 只缺开盘价" if res.get("missing_open") else "")]
-            for r in (st.get("recent") or [])[:3]:
-                sign = "+" if r["ret"] >= 0 else ""
-                lines.append(f"· {r['name']}：买 {r['buy']} → 卖 {r['sell']}（{sign}{r['ret']}%）")
-            lines.append(f"\n📊 累计（{st['count']} 笔）：胜率 {st['win_rate']}%｜平均 {st['avg_ret']}%")
-            reply_card(client, message_id, {
-                "config": {"wide_screen_mode": True},
-                "header": {"title": {"tag": "plain_text", "content": "模拟盘结算"}, "template": "green"},
-                "elements": [{"tag": "markdown", "content": "\n".join(lines)}]})
-        else:
-            reply_text(client, message_id, f"暂无待结算预测（{res.get('note','')}）")
-    except Exception as e:
-        logger.exception("结算失败")
-        reply_text(client, message_id, f"结算执行失败：{e}")
+    """预测：完整报告（复盘+预测一体）"""
+    _full_report_and_reply(client, message_id, mode="预测")
 
 
 def on_message(client: lark.Client, data: P2ImMessageReceiveV1) -> None:

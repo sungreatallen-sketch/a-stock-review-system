@@ -188,7 +188,7 @@ function boardTable(rows){
   const box = document.getElementById('predBox');
   if (t.length) {
     const heads = t.map((x,i)=>`<div class="idx">
-      <div class="n">${i+1}. ${x['名称']||''}（${x['代码']||''}）· 置信${x['confidence']||'中'}</div>
+      <div class="n">${i+1}. ${x['name']||x['名称']||''}（${x['code']||x['代码']||''}）· 置信${x['confidence']||'中'}</div>
       <div class="c">${x['参考买入价(收盘)'] ?? '-'}</div>
       <div class="p">${x['板块']||x['行业']||''}</div>
       <div class="note" style="margin-top:6px"><b>逻辑</b>：${x['reason']||x['逻辑']||''}</div>

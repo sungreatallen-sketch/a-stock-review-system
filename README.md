@@ -56,3 +56,10 @@ config/         config.yaml（MCP 顺序、Web 端口等）
   - com.ashare.bot    飞书机器人长连接（日志 /Users/yage/ashare-logs/bot.log）
   - com.ashare.server 报告 Web 服务 :8787（日志 /Users/yage/ashare-logs/server.log）
 - 使用：飞书内搜索并添加「A股复盘预测助手」机器人，发「复盘」即返回收盘复盘卡片+报告链接
+
+## M2：候选池 + 规则打分 + 回测（已完成）
+- 候选池：7-10日强势板块（5日主力资金流）+ 板块内强势个股 + 成交额活跃 + 涨停（剔除 ST/北交所）
+- 打分：板块强度/个股强度/资金活跃/换手率/情绪/质量
+- **量比过滤**（回测发现的最强因子）：剔除量比>2.0 放巨量标的
+- 回测结果（60日）：平均 +0.02%/笔，跑赢指数同口径 +0.20%/笔（详见 docs/M2回测报告.md）
+- 命令：`run_cli.py backtest`（回测）、`run_cli.py predict`（今日Top3）、飞书发「预测」

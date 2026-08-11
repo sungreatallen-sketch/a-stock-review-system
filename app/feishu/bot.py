@@ -61,17 +61,9 @@ def lan_ip() -> str:
 def _review_and_reply(client: lark.Client, message_id: str, chat_id: str):
     """后台执行：采集→验证→生成报告→回复卡片+链接"""
     try:
-        from ..collector import Collector
-        from ..report_builder import build_report
-        from ..storage import Storage
-        from ..html_report import render_html
-
+        from ..workflow import run_review
         p = paths()
-        st = Storage(p["data"], p["reports"])
-        report = build_report(Collector().collect())
-        st.save_report(report)
-        (p["reports"] / f"{report['date']}.html").write_text(
-            render_html(report), encoding="utf-8")
+        report = run_review(include_prediction=True)
 
         port = int(load_config()["web"].get("port", 8787))
         link = f"http://{lan_ip()}:{port}/report/{report['date']}"
@@ -105,6 +97,41 @@ def _review_and_reply(client: lark.Client, message_id: str, chat_id: str):
         reply_text(client, message_id, f"复盘执行失败：{e}\n（查看 Mac 上日志排查）")
 
 
+def _predict_and_reply(client: lark.Client, message_id: str):
+    """后台执行：生成 Top3 标的预测并回复"""
+    try:
+        from ..predict.cache import MCPCache, CachedMcp
+        from ..predict.daily import predict as predict_today
+        from ..mcp_client import McpClient
+        from ..config import paths as get_paths, load_config
+
+        cfg = load_config()
+        m = cfg["mcp"]
+        mcp = McpClient(m["proxy_url"], m.get("token", ""), m["workbuddy_log_dir"])
+        p = get_paths()
+        cached = CachedMcp(mcp, MCPCache(p["data"] / "mcp_cache.db"))
+        result = predict_today(cached)
+        lines = [f"**A股次日标的预测 · 基于 {result['date']} 收盘**",
+                 f"策略：{result['strategy']}",
+                 f"强势板块：{'、'.join(result['top_sectors'][:5])}"]
+        for i, t in enumerate(result["targets"], 1):
+            buy = t["参考买入价(收盘)"]
+            lines.append(f"\n**{i}. {t['名称']}（{t['代码']}）**\n"
+                         f"行业：{t['行业']}｜参考买入价（收盘）：{buy}\n"
+                         f"逻辑：{t['逻辑']}")
+        lines.append("\n⚠️ 仅供研究参考，不构成投资建议。卖出：次日开盘后。")
+        card = {
+            "config": {"wide_screen_mode": True},
+            "header": {"title": {"tag": "plain_text", "content": f"次日标的预测 · {result['date']}"},
+                       "template": "blue"},
+            "elements": [{"tag": "markdown", "content": "\n".join(lines)}],
+        }
+        reply_card(client, message_id, card)
+    except Exception as e:
+        logger.exception("预测失败")
+        reply_text(client, message_id, f"预测执行失败：{e}")
+
+
 def on_message(client: lark.Client, data: P2ImMessageReceiveV1) -> None:
     event = data.event
     if not event or not event.message:
@@ -120,9 +147,9 @@ def on_message(client: lark.Client, data: P2ImMessageReceiveV1) -> None:
         threading.Thread(target=_review_and_reply,
                          args=(client, msg.message_id, chat_id), daemon=True).start()
     elif any(k in text for k in ("预测", "标的")):
-        reply_text(client, msg.message_id,
-                   "标的预测功能正在开发中（M2 候选池+回测 → M3 消息面+模型研判），"
-                   "当前可先发送「复盘」查看今日收盘复盘。")
+        reply_text(client, msg.message_id, "收到！正在生成明日标的预测（板块+个股+资金+量比过滤）…")
+        threading.Thread(target=_predict_and_reply,
+                         args=(client, msg.message_id), daemon=True).start()
 
 
 def main() -> None:

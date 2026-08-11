@@ -185,10 +185,12 @@ function boardTable(rows){
 (function(){
   const p = DATA.prediction||{};
   const t = p.targets||[];
+  const box = document.getElementById('predBox');
   if (t.length) {
-    document.getElementById('predBox').innerHTML = `<div class="tbl-wrap"><table>${t.map(x=>`<tr><td>${x['代码']||''}</td><td>${x['名称']||''}</td><td>${x['逻辑']||''}</td></tr>`).join('')}</table></div>`;
+    const heads = t.map((x,i)=>`<div class="idx"><div class="n">${i+1}. ${x['名称']||''}（${x['代码']||''}）</div><div class="c">${x['参考买入价(收盘)'] ?? '-'}</div><div class="p">${x['行业']||''}</div><div class="sub" style="margin-top:4px">${x['逻辑']||''}</div></div>`).join('');
+    box.innerHTML = `<div class="grid">${heads}</div><div class="note">${p.strategy||''}｜参考买入价 = 收盘价，次日开盘后卖出</div>`;
   } else {
-    document.getElementById('predBox').innerHTML = p.status || '预测引擎开发中（M2/M3 上线）';
+    box.innerHTML = p.status || '预测引擎开发中（M2/M3 上线）';
   }
 })();
 

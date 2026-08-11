@@ -34,7 +34,9 @@ logger = logging.getLogger("feishu_bot")
 
 
 def _reply(client: lark.Client, message_id: str, body, msg_type: str, what: str) -> bool:
-    if _dedup(_REPLIED_MSG, message_id):
+    # 去重键 = (消息ID, 回复类型)：确认消息(text)与结果卡片(interactive)互不冲突；
+    # 仅同类型重复（如重试）会被跳过。
+    if _dedup(_REPLIED_MSG, (message_id, msg_type)):
         logger.info("%s已回复过该消息，跳过重复发送", what)
         return True
     req = ReplyMessageRequest.builder().message_id(message_id).request_body(body).build()

@@ -1,0 +1,35 @@
+project:
+  name: "A股收盘复盘与标的预测"
+  data_dir: "data"
+  report_dir: "reports"
+  log_dir: "logs"
+  static_dir: "static"
+
+model:
+  base_url: ""                 # 留空则读取环境变量 DEEPSEEK_BASE_URL
+  api_key_env: "DEEPSEEK_API_KEY"
+  model: "deepseek-v4-flash"
+  reasoning_effort: "high"
+
+mcp:
+  proxy_url: "http://127.0.0.1:55056/mcp"
+  workbuddy_log_dir: "~/.workbuddy/logs"
+  token_env: "WORKBUDDY_MCP_TOKEN"
+  # 兜底顺序（按数据类型），依次调用直到拿到数据
+  sources:
+    quote: ["tdx-connector", "tongzhou-fin-research", "wind-finance"]
+    capital: ["wind-finance", "tdx-connector", "tongzhou-fin-research"]
+    research: ["tongzhou-fin-research", "wind-finance", "tdx-connector"]
+
+web:
+  host: "0.0.0.0"
+  port: 8787
+
+feishu:
+  app_id_env: "FEISHU_APP_ID"
+  app_secret_env: "FEISHU_APP_SECRET"
+  event_path: "/feishu/event"
+  send_to_env: "FEISHU_SEND_TO"
+
+backtest:
+  window_days: 90

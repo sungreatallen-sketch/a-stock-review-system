@@ -23,14 +23,42 @@ def _get_cached_mcp():
 
 def run_review(include_prediction: bool = True, auto_track: bool = True) -> dict:
     """执行完整复盘（采集→验证→报告），可选附标的预测
-    auto_track: 先自动结算上期预测，再记录本期预测（模拟盘）"""
+    auto_track: 先自动结算上期预测，再记录本期预测（模拟盘）
+    同日已生成报告时直接复用（避免重复采集/预测浪费 token）"""
+    from datetime import date
     p = paths()
     st = Storage(p["data"], p["reports"])
     settle_result = None
+    today = str(date.today())
+
+    # 同日内重复请求：复用已生成报告
+    try:
+        from .predict.cache import MCPCache, CachedMcp
+        from .predict.backtest import Backtest, INDEX_TICKER
+        cached = _get_cached_mcp()
+        resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
+                           {"ticker": INDEX_TICKER, "market": "index", "end_date": today, "limit": 2})
+        pts = sorted({x["time"] for x in ((resp or {}).get("data") or {}).get("points") or []})
+        latest_day = pts[-1] if pts else today
+        existing = st.load_report(latest_day)
+        gen_day = ((existing or {}).get("meta") or {}).get("generated_at", "")[:10]
+        if existing and gen_day == today:
+            log.info("今日报告已存在(%s)，直接复用", latest_day)
+            if auto_track:
+                from .predict.track import Tracker
+                tr = Tracker(p["data"])
+                settle_result = tr.settle_pending(cached)
+                existing["prediction"] = dict(existing.get("prediction") or {})
+                existing["prediction"]["settle"] = settle_result
+                st.save_report(existing)
+            existing["_settle"] = settle_result
+            return existing
+    except Exception as e:
+        log.warning("报告复用检查失败，重新生成: %s", str(e)[:120])
+
     report = build_report(Collector().collect())
     if include_prediction:
         try:
-            cached = _get_cached_mcp()
             from .predict.track import Tracker
             tr = Tracker(p["data"])
             if auto_track:

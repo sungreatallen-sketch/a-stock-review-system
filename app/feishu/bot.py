@@ -8,9 +8,17 @@ import socket
 import threading
 import time
 
+import os
+
+# 彻底绕过系统代理：clash 对飞书/DeepSeek 路由不稳定，且代理超时会导致飞书长连接重投事件
+os.environ.setdefault("NO_PROXY",
+                      "open.feishu.cn,*.feishu.cn,larksuite.com,*.larksuite.com,"
+                      "api.deepseek.com,127.0.0.1,localhost")
+os.environ["no_proxy"] = os.environ["NO_PROXY"]
+
 import requests
 
-# 飞书 API 直连：绕过 macOS 系统代理（clash 对 feishu 路由不稳定导致回复失败）
+# 飞书 API 直连：绕过 macOS 系统代理
 requests.Session.trust_env = False
 
 import lark_oapi as lark
@@ -26,9 +34,12 @@ logger = logging.getLogger("feishu_bot")
 
 
 def _reply(client: lark.Client, message_id: str, body, msg_type: str, what: str) -> bool:
+    if _dedup(_REPLIED_MSG, message_id):
+        logger.info("%s已回复过该消息，跳过重复发送", what)
+        return True
     req = ReplyMessageRequest.builder().message_id(message_id).request_body(body).build()
     last = None
-    for attempt in range(1, 4):
+    for attempt in range(1, 3):
         try:
             resp = client.im.v1.message.reply(req)
             if resp.success():
@@ -37,8 +48,22 @@ def _reply(client: lark.Client, message_id: str, body, msg_type: str, what: str)
         except Exception as e:
             last = f"{type(e).__name__}: {str(e)[:120]}"
         logger.warning("%s回复失败(第%d次): %s", what, attempt, last)
-        time.sleep(1.5 * attempt)
+        time.sleep(1.0 * attempt)
     logger.error("%s回复最终失败: %s", what, last)
+    return False
+
+
+# 消息级去重：同一消息只处理一次（防飞书长连接重投 / 重试导致的重复）
+_PROCESSED_MSG = {}   # message_id -> ts
+_REPLIED_MSG = {}     # message_id -> ts
+
+
+def _dedup(container, key, window: float = 1800.0) -> bool:
+    """True=已处理过(应跳过)；首次则记录并返回 False"""
+    now = time.time()
+    if key in container and now - container[key] < window:
+        return True
+    container[key] = now
     return False
 
 
@@ -72,15 +97,31 @@ def lan_ip() -> str:
         s.close()
 
 
+def report_link(date_str: str) -> str:
+    """用 .local 主机名生成链接（LAN 内稳定，不受 DHCP IP 变化影响）"""
+    port = int(load_config()["web"].get("port", 8787))
+    host = "localhost"
+    try:
+        import subprocess
+        out = subprocess.run(["scutil", "--get", "LocalHostName"],
+                             capture_output=True, text=True, timeout=5)
+        h = (out.stdout or "").strip()
+        if h:
+            host = f"{h}.local"
+    except Exception:
+        pass
+    return f"http://{host}:{port}/report/{date_str}"
+
+
 def _review_and_reply(client: lark.Client, message_id: str, chat_id: str):
     """后台执行：采集→验证→生成报告→回复卡片+链接"""
     try:
+        reply_text(client, message_id, "收到！正在采集今日收盘数据并交叉验证，约 20~40 秒，请稍候…")
         from ..workflow import run_review
         p = paths()
         report = run_review(include_prediction=True)
 
-        port = int(load_config()["web"].get("port", 8787))
-        link = f"http://{lan_ip()}:{port}/report/{report['date']}"
+        link = report_link(report['date'])
         mi = report["market_index"]
         emo = report["emotion"]
         summary = (
@@ -114,6 +155,7 @@ def _review_and_reply(client: lark.Client, message_id: str, chat_id: str):
 def _predict_and_reply(client: lark.Client, message_id: str):
     """后台执行：生成 Top3 标的预测并回复"""
     try:
+        reply_text(client, message_id, "收到！正在生成明日标的预测（板块+个股+资金+量比过滤）…")
         from ..predict.cache import MCPCache, CachedMcp
         from ..predict.daily import predict as predict_today
         from ..mcp_client import McpClient
@@ -153,6 +195,7 @@ def _predict_and_reply(client: lark.Client, message_id: str):
 
 def _settle_and_reply(client: lark.Client, message_id: str):
     try:
+        reply_text(client, message_id, "收到！正在结算最近一期预测并统计…")
         from ..predict.track import Tracker
         from ..predict.cache import MCPCache, CachedMcp
         from ..mcp_client import McpClient
@@ -192,17 +235,19 @@ def on_message(client: lark.Client, data: P2ImMessageReceiveV1) -> None:
         return
     text = _extract_text(msg.content)
     chat_id = msg.chat_id or ""
+    if _dedup(_PROCESSED_MSG, msg.message_id):
+        logger.info("消息 %s 已处理过，跳过重复事件", msg.message_id)
+        return
     logger.info("收到消息: chat=%s text=%s", chat_id, text[:60])
+    # 注意：事件处理必须立即返回（否则飞书长连接会重投事件导致重复），
+    # 确认回复与实际工作都放到后台线程执行。
     if any(k in text for k in ("复盘", "收盘", "复盘+")):
-        reply_text(client, msg.message_id, "收到！正在采集今日收盘数据并交叉验证，约 20~40 秒，请稍候…")
         threading.Thread(target=_review_and_reply,
                          args=(client, msg.message_id, chat_id), daemon=True).start()
     elif any(k in text for k in ("结算", "复盘结果", "命中率", "模拟盘")):
-        reply_text(client, msg.message_id, "收到！正在结算最近一期预测并统计…")
         threading.Thread(target=_settle_and_reply,
                          args=(client, msg.message_id), daemon=True).start()
     elif any(k in text for k in ("预测", "标的")):
-        reply_text(client, msg.message_id, "收到！正在生成明日标的预测（板块+个股+资金+量比过滤）…")
         threading.Thread(target=_predict_and_reply,
                          args=(client, msg.message_id), daemon=True).start()
 

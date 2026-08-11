@@ -63,3 +63,9 @@ config/         config.yaml（MCP 顺序、Web 端口等）
 - **量比过滤**（回测发现的最强因子）：剔除量比>2.0 放巨量标的
 - 回测结果（60日）：平均 +0.02%/笔，跑赢指数同口径 +0.20%/笔（详见 docs/M2回测报告.md）
 - 命令：`run_cli.py backtest`（回测）、`run_cli.py predict`（今日Top3）、飞书发「预测」
+
+## M3：消息面 + DeepSeek 研判 + 模拟盘（已完成）
+- 消息面：同舟 doc_search 扫描候选股近5日新闻/公告/事件（含来源链接、情绪初筛）
+- 研判：DeepSeek（deepseek-v4-flash）基于规则候选+消息面+市场环境输出 Top3（逻辑/风险/置信度），输出经白名单防幻觉
+- 模拟盘：`run_cli.py track record/settle/stats` 记录预测→次日回填→命中率统计
+- 命令：`run_cli.py predict`（完整预测）、飞书「预测」

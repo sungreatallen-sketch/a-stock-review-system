@@ -51,6 +51,10 @@ def main():
                     help="指数5日涨跌幅过滤阈值（如 0 表示仅指数5日为正才交易）")
     bt.add_argument("--no-vol", action="store_true", help="关闭量比过滤（默认开启量比<2.0）")
     bt.add_argument("-v", "--verbose", action="store_true")
+    tk = sub.add_parser("track", help="模拟盘跟踪: record/settle/stats")
+    tk.add_argument("action", choices=["record", "settle", "stats"])
+    tk.add_argument("--date", default=None)
+    tk.add_argument("--days", type=int, default=30)
     pd = sub.add_parser("predict", help="生成今日 Top3 标的预测")
     pd.add_argument("--date", default=None, help="标的日期 YYYY-MM-DD（默认最新交易日）")
     rp = sub.add_parser("report", help="重新生成 HTML")
@@ -90,6 +94,47 @@ def main():
         out.write_text(_json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(_json.dumps(result["stats"], ensure_ascii=False, indent=2))
         print(f"报告: {out}")
+    elif args.cmd == "track":
+        from app.predict.track import Tracker
+        from app.predict.daily import predict as predict_today
+        from app.predict.cache import MCPCache, CachedMcp
+        from app.mcp_client import McpClient
+        from app.config import load_config, paths
+        cfg = load_config()
+        m = cfg["mcp"]
+        mcp = McpClient(m["proxy_url"], m.get("token", ""), m["workbuddy_log_dir"])
+        p = paths()
+        cached = CachedMcp(mcp, MCPCache(p["data"] / "mcp_cache.db"))
+        tr = Tracker(p["data"])
+        if args.action == "record":
+            result = predict_today(cached, args.date)
+            tr.record_prediction(result)
+            print(f"已记录 {result['date']} 预测: {[t.get('name') for t in result['targets']]}")
+        elif args.action == "settle":
+            # 结算最近一次预测：用预测日+1的开盘价
+            import sqlite3
+            conn = sqlite3.connect(p["data"] / "a_share.db")
+            row = conn.execute("SELECT date, targets FROM predictions ORDER BY id DESC LIMIT 1").fetchone()
+            conn.close()
+            if not row:
+                print("无预测记录可结算")
+            else:
+                pred_date, targets_json = row
+                sell_date = args.date or pred_date  # 实盘时传次日日期
+                open_prices = {}
+                tgt = json.loads(targets_json).get("targets") or []
+                for t in tgt:
+                    code = (t.get("code") or "").split(".")[0]
+                    resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
+                                       {"ticker": code, "market": "a_stock", "end_date": sell_date, "limit": 5})
+                    pts = ((resp or {}).get("data") or {}).get("points") or []
+                    pt = next((x for x in pts if x["time"] == sell_date), None)
+                    if pt and pt.get("open"):
+                        open_prices[code] = pt["open"]
+                res = tr.settle(sell_date, open_prices)
+                print(f"结算完成: {res}")
+        elif args.action == "stats":
+            print(json.dumps(tr.stats(args.days), ensure_ascii=False, indent=2))
     elif args.cmd == "predict":
         from app.predict.daily import predict as predict_today
         from app.predict.cache import MCPCache, CachedMcp

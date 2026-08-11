@@ -125,14 +125,19 @@ def _predict_and_reply(client: lark.Client, message_id: str):
         p = get_paths()
         cached = CachedMcp(mcp, MCPCache(p["data"] / "mcp_cache.db"))
         result = predict_today(cached)
+        mv = result.get("market_view") or ""
         lines = [f"**A股次日标的预测 · 基于 {result['date']} 收盘**",
                  f"策略：{result['strategy']}",
                  f"强势板块：{'、'.join(result['top_sectors'][:5])}"]
+        if mv:
+            lines.append(f"\n📌 市场判断：{mv}")
         for i, t in enumerate(result["targets"], 1):
-            buy = t["参考买入价(收盘)"]
-            lines.append(f"\n**{i}. {t['名称']}（{t['代码']}）**\n"
-                         f"行业：{t['行业']}｜参考买入价（收盘）：{buy}\n"
-                         f"逻辑：{t['逻辑']}")
+            buy = t.get("参考买入价(收盘)")
+            conf = t.get("confidence") or "中"
+            lines.append(f"\n**{i}. {t.get('name')}（{t.get('code')}）· 置信{conf}**\n"
+                         f"参考买入价（收盘）：{buy}\n"
+                         f"逻辑：{t.get('reason')}\n"
+                         f"⚠️ 风险：{t.get('risk')}")
         lines.append("\n⚠️ 仅供研究参考，不构成投资建议。卖出：次日开盘后。")
         card = {
             "config": {"wide_screen_mode": True},

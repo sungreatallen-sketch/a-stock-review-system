@@ -187,8 +187,14 @@ function boardTable(rows){
   const t = p.targets||[];
   const box = document.getElementById('predBox');
   if (t.length) {
-    const heads = t.map((x,i)=>`<div class="idx"><div class="n">${i+1}. ${x['名称']||''}（${x['代码']||''}）</div><div class="c">${x['参考买入价(收盘)'] ?? '-'}</div><div class="p">${x['行业']||''}</div><div class="sub" style="margin-top:4px">${x['逻辑']||''}</div></div>`).join('');
-    box.innerHTML = `<div class="grid">${heads}</div><div class="note">${p.strategy||''}｜参考买入价 = 收盘价，次日开盘后卖出</div>`;
+    const heads = t.map((x,i)=>`<div class="idx">
+      <div class="n">${i+1}. ${x['名称']||''}（${x['代码']||''}）· 置信${x['confidence']||'中'}</div>
+      <div class="c">${x['参考买入价(收盘)'] ?? '-'}</div>
+      <div class="p">${x['板块']||x['行业']||''}</div>
+      <div class="note" style="margin-top:6px"><b>逻辑</b>：${x['reason']||x['逻辑']||''}</div>
+      <div class="warn" style="margin-top:4px"><b>风险</b>：${x['risk']||'无'}</div>
+    </div>`).join('');
+    box.innerHTML = `${p.market_view?`<div class="warn" style="margin-bottom:10px">📌 市场判断：${p.market_view}</div>`:''}<div class="grid">${heads}</div><div class="note">${p.strategy||''}｜参考买入价 = 收盘价，次日开盘后卖出</div>`;
   } else {
     box.innerHTML = p.status || '预测引擎开发中（M2/M3 上线）';
   }

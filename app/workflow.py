@@ -31,9 +31,10 @@ def run_review(include_prediction: bool = True) -> dict:
             from .predict.daily import predict as predict_today
             pred = predict_today(_get_cached_mcp())
             report["prediction"] = {
-                "status": "M2规则版",
+                "status": "M3完整版",
                 "date": pred["date"],
                 "strategy": pred["strategy"],
+                "market_view": pred.get("market_view"),
                 "targets": pred["targets"],
                 "top_sectors": pred["top_sectors"],
             }

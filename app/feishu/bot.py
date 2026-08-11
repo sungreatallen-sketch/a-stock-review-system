@@ -8,6 +8,11 @@ import socket
 import threading
 import time
 
+import requests
+
+# 飞书 API 直连：绕过 macOS 系统代理（clash 对 feishu 路由不稳定导致回复失败）
+requests.Session.trust_env = False
+
 import lark_oapi as lark
 from lark_oapi.api.im.v1 import (
     P2ImMessageReceiveV1,
@@ -20,24 +25,33 @@ from ..config import load_config, paths
 logger = logging.getLogger("feishu_bot")
 
 
+def _reply(client: lark.Client, message_id: str, body, msg_type: str, what: str) -> bool:
+    req = ReplyMessageRequest.builder().message_id(message_id).request_body(body).build()
+    last = None
+    for attempt in range(1, 4):
+        try:
+            resp = client.im.v1.message.reply(req)
+            if resp.success():
+                return True
+            last = f"code={resp.code} msg={resp.msg}"
+        except Exception as e:
+            last = f"{type(e).__name__}: {str(e)[:120]}"
+        logger.warning("%s回复失败(第%d次): %s", what, attempt, last)
+        time.sleep(1.5 * attempt)
+    logger.error("%s回复最终失败: %s", what, last)
+    return False
+
+
 def reply_text(client: lark.Client, message_id: str, text: str) -> bool:
     body = ReplyMessageRequestBody.builder().content(
         json.dumps({"text": text}, ensure_ascii=False)).msg_type("text").build()
-    req = ReplyMessageRequest.builder().message_id(message_id).request_body(body).build()
-    resp = client.im.v1.message.reply(req)
-    if not resp.success():
-        logger.error("回复失败: code=%s msg=%s", resp.code, resp.msg)
-    return resp.success()
+    return _reply(client, message_id, body, "text", "文本")
 
 
 def reply_card(client: lark.Client, message_id: str, card: dict) -> bool:
     body = ReplyMessageRequestBody.builder().content(
         json.dumps(card, ensure_ascii=False)).msg_type("interactive").build()
-    req = ReplyMessageRequest.builder().message_id(message_id).request_body(body).build()
-    resp = client.im.v1.message.reply(req)
-    if not resp.success():
-        logger.error("卡片回复失败: code=%s msg=%s", resp.code, resp.msg)
-    return resp.success()
+    return _reply(client, message_id, body, "interactive", "卡片")
 
 
 def _extract_text(content: str) -> str:

@@ -21,15 +21,24 @@ def _get_cached_mcp():
     return CachedMcp(mcp, MCPCache(p["data"] / "mcp_cache.db"))
 
 
-def run_review(include_prediction: bool = True) -> dict:
-    """执行完整复盘（采集→验证→报告），可选附标的预测"""
+def run_review(include_prediction: bool = True, auto_track: bool = True) -> dict:
+    """执行完整复盘（采集→验证→报告），可选附标的预测
+    auto_track: 先自动结算上期预测，再记录本期预测（模拟盘）"""
     p = paths()
     st = Storage(p["data"], p["reports"])
+    settle_result = None
     report = build_report(Collector().collect())
     if include_prediction:
         try:
+            cached = _get_cached_mcp()
+            from .predict.track import Tracker
+            tr = Tracker(p["data"])
+            if auto_track:
+                settle_result = tr.settle_pending(cached)
             from .predict.daily import predict as predict_today
-            pred = predict_today(_get_cached_mcp())
+            pred = predict_today(cached)
+            if auto_track:
+                tr.record_prediction(pred)
             report["prediction"] = {
                 "status": "M3完整版",
                 "date": pred["date"],
@@ -37,10 +46,12 @@ def run_review(include_prediction: bool = True) -> dict:
                 "market_view": pred.get("market_view"),
                 "targets": pred["targets"],
                 "top_sectors": pred["top_sectors"],
+                "settle": settle_result,
             }
         except Exception as e:
             log.warning("预测生成失败，报告仍包含复盘: %s", str(e)[:150])
             report["prediction"] = {"status": "预测生成失败", "error": str(e)[:200], "targets": []}
     st.save_report(report)
     (p["reports"] / f"{report['date']}.html").write_text(render_html(report), encoding="utf-8")
+    report["_settle"] = settle_result
     return report

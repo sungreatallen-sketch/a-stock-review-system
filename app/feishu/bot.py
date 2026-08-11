@@ -151,6 +151,38 @@ def _predict_and_reply(client: lark.Client, message_id: str):
         reply_text(client, message_id, f"预测执行失败：{e}")
 
 
+def _settle_and_reply(client: lark.Client, message_id: str):
+    try:
+        from ..predict.track import Tracker
+        from ..predict.cache import MCPCache, CachedMcp
+        from ..mcp_client import McpClient
+        from ..config import paths as get_paths, load_config
+        cfg = load_config()
+        m = cfg["mcp"]
+        mcp = McpClient(m["proxy_url"], m.get("token", ""), m["workbuddy_log_dir"])
+        p = get_paths()
+        cached = CachedMcp(mcp, MCPCache(p["data"] / "mcp_cache.db"))
+        tr = Tracker(p["data"])
+        res = tr.settle_pending(cached)
+        if res.get("settled"):
+            st = tr.stats()
+            lines = [f"✅ 已结算 {res['date']} 期预测（卖出日 {res.get('sell_date')}）",
+                     f"本期结算 {res['settled']} 只" + (f"，{len(res['missing_open'])} 只缺开盘价" if res.get("missing_open") else "")]
+            for r in (st.get("recent") or [])[:3]:
+                sign = "+" if r["ret"] >= 0 else ""
+                lines.append(f"· {r['name']}：买 {r['buy']} → 卖 {r['sell']}（{sign}{r['ret']}%）")
+            lines.append(f"\n📊 累计（{st['count']} 笔）：胜率 {st['win_rate']}%｜平均 {st['avg_ret']}%")
+            reply_card(client, message_id, {
+                "config": {"wide_screen_mode": True},
+                "header": {"title": {"tag": "plain_text", "content": "模拟盘结算"}, "template": "green"},
+                "elements": [{"tag": "markdown", "content": "\n".join(lines)}]})
+        else:
+            reply_text(client, message_id, f"暂无待结算预测（{res.get('note','')}）")
+    except Exception as e:
+        logger.exception("结算失败")
+        reply_text(client, message_id, f"结算执行失败：{e}")
+
+
 def on_message(client: lark.Client, data: P2ImMessageReceiveV1) -> None:
     event = data.event
     if not event or not event.message:
@@ -165,6 +197,10 @@ def on_message(client: lark.Client, data: P2ImMessageReceiveV1) -> None:
         reply_text(client, msg.message_id, "收到！正在采集今日收盘数据并交叉验证，约 20~40 秒，请稍候…")
         threading.Thread(target=_review_and_reply,
                          args=(client, msg.message_id, chat_id), daemon=True).start()
+    elif any(k in text for k in ("结算", "复盘结果", "命中率", "模拟盘")):
+        reply_text(client, msg.message_id, "收到！正在结算最近一期预测并统计…")
+        threading.Thread(target=_settle_and_reply,
+                         args=(client, msg.message_id), daemon=True).start()
     elif any(k in text for k in ("预测", "标的")):
         reply_text(client, msg.message_id, "收到！正在生成明日标的预测（板块+个股+资金+量比过滤）…")
         threading.Thread(target=_predict_and_reply,

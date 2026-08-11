@@ -69,3 +69,8 @@ config/         config.yaml（MCP 顺序、Web 端口等）
 - 研判：DeepSeek（deepseek-v4-flash）基于规则候选+消息面+市场环境输出 Top3（逻辑/风险/置信度），输出经白名单防幻觉
 - 模拟盘：`run_cli.py track record/settle/stats` 记录预测→次日回填→命中率统计
 - 命令：`run_cli.py predict`（完整预测）、飞书「预测」
+
+## M4：模拟盘自动化（已完成）
+- 复盘/预测时自动结算上期 + 自动记录本期
+- 飞书「结算」「命中率」命令；launchd 工作日 15:30 自动结算兜底
+- 详见 docs/M4模拟盘自动化.md

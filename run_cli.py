@@ -51,8 +51,8 @@ def main():
                     help="指数5日涨跌幅过滤阈值（如 0 表示仅指数5日为正才交易）")
     bt.add_argument("--no-vol", action="store_true", help="关闭量比过滤（默认开启量比<2.0）")
     bt.add_argument("-v", "--verbose", action="store_true")
-    tk = sub.add_parser("track", help="模拟盘跟踪: record/settle/stats")
-    tk.add_argument("action", choices=["record", "settle", "stats"])
+    tk = sub.add_parser("track", help="模拟盘跟踪: record/auto/settle/stats")
+    tk.add_argument("action", choices=["record", "auto", "settle", "stats"])
     tk.add_argument("--date", default=None)
     tk.add_argument("--days", type=int, default=30)
     pd = sub.add_parser("predict", help="生成今日 Top3 标的预测")
@@ -110,29 +110,11 @@ def main():
             result = predict_today(cached, args.date)
             tr.record_prediction(result)
             print(f"已记录 {result['date']} 预测: {[t.get('name') for t in result['targets']]}")
-        elif args.action == "settle":
-            # 结算最近一次预测：用预测日+1的开盘价
-            import sqlite3
-            conn = sqlite3.connect(p["data"] / "a_share.db")
-            row = conn.execute("SELECT date, targets FROM predictions ORDER BY id DESC LIMIT 1").fetchone()
-            conn.close()
-            if not row:
-                print("无预测记录可结算")
-            else:
-                pred_date, targets_json = row
-                sell_date = args.date or pred_date  # 实盘时传次日日期
-                open_prices = {}
-                tgt = json.loads(targets_json).get("targets") or []
-                for t in tgt:
-                    code = (t.get("code") or "").split(".")[0]
-                    resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
-                                       {"ticker": code, "market": "a_stock", "end_date": sell_date, "limit": 5})
-                    pts = ((resp or {}).get("data") or {}).get("points") or []
-                    pt = next((x for x in pts if x["time"] == sell_date), None)
-                    if pt and pt.get("open"):
-                        open_prices[code] = pt["open"]
-                res = tr.settle(sell_date, open_prices)
-                print(f"结算完成: {res}")
+        elif args.action in ("auto", "settle"):
+            res = tr.settle_pending(cached, today=args.date)
+            print(f"结算结果: {json.dumps(res, ensure_ascii=False)}")
+            if res.get("settled"):
+                print(json.dumps(tr.stats(), ensure_ascii=False, indent=2))
         elif args.action == "stats":
             print(json.dumps(tr.stats(args.days), ensure_ascii=False, indent=2))
     elif args.cmd == "predict":

@@ -37,6 +37,12 @@ class Tracker:
                 status TEXT,
                 created_at TEXT NOT NULL
             )""")
+        # 迁移：补充收盘价字段（次日收盘）
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(prediction_results)")}
+        for c, sql in (("sell_close", "ALTER TABLE prediction_results ADD COLUMN sell_close REAL"),
+                       ("ret_close", "ALTER TABLE prediction_results ADD COLUMN ret_close REAL")):
+            if c not in cols:
+                conn.execute(sql)
         conn.commit()
         conn.close()
 
@@ -64,8 +70,9 @@ class Tracker:
         return row
 
     # ---------- 结算 ----------
-    def settle(self, pred_date: str, open_prices: dict) -> dict:
-        """pred_date: 预测日 T；open_prices: {code: T+1 开盘价}"""
+    def settle(self, pred_date: str, open_prices: dict, close_prices: dict = None) -> dict:
+        """pred_date: 预测日 T；open_prices: {code: T+1 开盘价}；close_prices: {code: T+1 收盘价}（可选）"""
+        close_prices = close_prices or {}
         conn = self._conn()
         conn.execute("DELETE FROM prediction_results WHERE date=?", (pred_date,))
         row = conn.execute("SELECT targets FROM predictions WHERE date=?", (pred_date,)).fetchone()
@@ -79,13 +86,16 @@ class Tracker:
             code = (t.get("code") or "").split(".")[0]
             buy = t.get("参考买入价(收盘)")
             sell = open_prices.get(code)
+            sell_close = close_prices.get(code)
             if not buy or not sell:
                 missing.append(code)
                 continue
             ret = round((sell / buy - 1) * 100, 2)
+            ret_close = round((sell_close / buy - 1) * 100, 2) if sell_close else None
             conn.execute(
-                "INSERT INTO prediction_results(date, target_code, target_name, buy_price, sell_price, ret, status, created_at) VALUES(?,?,?,?,?,?,?,?)",
-                (pred_date, code, t.get("name"), buy, sell, ret, "settled",
+                "INSERT INTO prediction_results(date, target_code, target_name, buy_price, sell_price, ret, sell_close, ret_close, status, created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (pred_date, code, t.get("name"), buy, sell, ret, sell_close, ret_close, "settled",
                  __import__("datetime").datetime.now().isoformat()))
             saved += 1
         conn.commit()
@@ -135,7 +145,7 @@ class Tracker:
         # 拉取各标的次日开盘价（MCP 优先，失败自动切 ego 浏览器兜底）
         targets = json.loads(row[1]).get("targets") or []
         codes = [(t.get("code") or "").split(".")[0] for t in targets]
-        opens = {}
+        opens, closes = {}, {}
         mcp_failed = False
         for code in codes:
             try:
@@ -145,12 +155,14 @@ class Tracker:
                            if x.get("time") == sell_date), None)
                 if pt and pt.get("open"):
                     opens[code] = pt["open"]
+                if pt and pt.get("close"):
+                    closes[code] = pt["close"]
             except Exception as e:
                 mcp_failed = True
-                log.warning("MCP 取 %s 开盘价失败: %s", code, str(e)[:120])
+                log.warning("MCP 取 %s 行情失败: %s", code, str(e)[:120])
         if not opens and mcp_failed:
-            # 兜底：ego browser 东财K线
-            log.info("MCP 不可用，切换到 ego browser 获取开盘价")
+            # 兜底：ego browser 东财K线（仅开盘价，收盘价尽力而为）
+            log.info("MCP 不可用，切换到 ego browser 获取行情")
             from .alt_data import EgoOpenPrices
             from ..config import paths as get_paths
             ego = EgoOpenPrices(get_paths()["data"] / "ego_kline.db")
@@ -158,7 +170,7 @@ class Tracker:
             opens.update(ego_opens)
         if not opens:
             return {"date": pred_date, "sell_date": sell_date, "note": "次日开盘价未获取到"}
-        res = self.settle(pred_date, opens)
+        res = self.settle(pred_date, opens, closes)
         res["sell_date"] = sell_date
         if mcp_failed:
             res["data_source"] = "ego浏览器兜底"
@@ -168,7 +180,8 @@ class Tracker:
     def stats(self, days: int = 30) -> dict:
         conn = self._conn()
         rows = conn.execute(
-            "SELECT date, target_code, target_name, buy_price, sell_price, ret, status "
+            "SELECT date, target_code, target_name, buy_price, sell_price, ret, "
+            "sell_close, ret_close, status "
             "FROM prediction_results WHERE status='settled' ORDER BY date DESC LIMIT ?",
             (days * 3,)).fetchall()
         conn.close()
@@ -177,6 +190,7 @@ class Tracker:
         rets = [r[5] for r in rows if r[5] is not None]
         wins = [r for r in rets if r > 0]
         import statistics
+        closes = [r[7] for r in rows if r[7] is not None]
         return {
             "count": len(rets),
             "win_rate": round(len(wins) / len(rets) * 100, 1),
@@ -184,8 +198,10 @@ class Tracker:
             "median_ret": round(statistics.median(rets), 2),
             "best": round(max(rets), 2),
             "worst": round(min(rets), 2),
+            "avg_ret_close": round(statistics.mean(closes), 2) if closes else None,
             "recent": [
-                {"date": r[0], "name": r[2], "buy": r[3], "sell": r[4], "ret": r[5], "status": r[6]}
+                {"date": r[0], "name": r[2], "buy": r[3], "sell": r[4], "ret": r[5],
+                 "sell_close": r[6], "ret_close": r[7], "status": r[8]}
                 for r in rows[:15]
             ],
         }

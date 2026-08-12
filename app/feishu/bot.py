@@ -170,12 +170,15 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
             latest_date = rows[0].get("date")
             day_rows = [r for r in rows if r.get("date") == latest_date]
             wins = sum(1 for r in day_rows if (r.get("ret") or 0) > 0)
-            prev_lines = [f"\n\n📈 **昨日推荐复盘（{latest_date} 推荐 → 次日开盘结算）**"]
+            prev_lines = [f"\n\n📈 **昨日推荐复盘（{latest_date} 买入 → 次日开盘卖出 / 收盘）**"]
             for r in day_rows:
-                sign = "+" if (r.get("ret") or 0) >= 0 else ""
-                prev_lines.append(f"· {r.get('name')}：{r.get('buy')} → {r.get('sell')}（{sign}{r.get('ret')}%）")
-            prev_lines.append(f"当日命中 {wins}/{len(day_rows)}｜累计命中率 {tstats.get('win_rate')}%"
-                              f"（{tstats.get('count')} 笔）｜平均 {tstats.get('avg_ret')}%")
+                s1 = "+" if (r.get("ret") or 0) >= 0 else ""
+                s2 = "+" if (r.get("ret_close") or 0) >= 0 else ""
+                prev_lines.append(
+                    f"· {r.get('name')}：买 {r.get('buy')} → 开 {r.get('sell')}（{s1}{r.get('ret')}%）"
+                    f"｜收 {r.get('sell_close')}（{s2}{r.get('ret_close')}%）")
+            prev_lines.append(f"开盘卖出命中 {wins}/{len(day_rows)}｜收盘平均 {tstats.get('avg_ret_close')}%"
+                              f"｜累计开盘胜率 {tstats.get('win_rate')}%（{tstats.get('count')} 笔）")
             summary += "\n".join(prev_lines)
         if targets:
             t_lines = ["\n**次日标的（收盘价附近买入，次日开盘卖出）**"]

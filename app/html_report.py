@@ -217,16 +217,17 @@ function boardTable(rows){
   }
   if (stats && stats.count) {
     html += `<div class="emo">
-      <div class="b"><div class="v">${stats.win_rate??'-'}%</div><div class="l">累计命中率</div></div>
-      <div class="b"><div class="v">${stats.avg_ret??'-'}</div><div class="l">平均收益%</div></div>
-      <div class="b"><div class="v">${stats.best??'-'}</div><div class="l">最佳%</div></div>
+      <div class="b"><div class="v">${stats.win_rate??'-'}%</div><div class="l">开盘卖出命中率</div></div>
+      <div class="b"><div class="v">${stats.avg_ret??'-'}</div><div class="l">开盘平均%</div></div>
+      <div class="b"><div class="v">${stats.avg_ret_close??'-'}</div><div class="l">收盘平均%</div></div>
       <div class="b"><div class="v">${stats.count??'-'}</div><div class="l">已结算笔数</div></div></div>`;
     const rows = stats.recent||[];
     if (rows.length) {
       html += `<div class="tbl-wrap" style="margin-top:10px"><table>
-        <tr><th>日期</th><th>标的</th><th>买入</th><th>开盘卖出</th><th>收益</th></tr>` +
+        <tr><th>日期</th><th>标的</th><th>买入</th><th>开卖</th><th>开收益</th><th>收价</th><th>收收益</th></tr>` +
         rows.map(r=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.buy}</td><td>${r.sell}</td>
-          <td class="${cls(r.ret)}">${r.ret>=0?'+':''}${r.ret}%</td></tr>`).join('') + `</table></div>`;
+          <td class="${cls(r.ret)}">${r.ret>=0?'+':''}${r.ret}%</td><td>${r.sell_close??'-'}</td>
+          <td class="${cls(r.ret_close)}">${r.ret_close>=0?'+':''}${r.ret_close}%</td></tr>`).join('') + `</table></div>`;
     }
   } else {
     html += `<div class="note">暂无已结算推荐记录（每天复盘/预测后，次日自动结算）</div>`;

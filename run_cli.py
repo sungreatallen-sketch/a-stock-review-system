@@ -19,13 +19,13 @@ from app.storage import Storage
 from app.html_report import render_html
 
 
-def do_review(target: date = None, verbose=False):
+def do_review(target: date = None, verbose=False, force=False):
     logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     from app.workflow import run_review
     p = paths()
     print(">>> 开始采集数据 + 生成标的预测...")
-    report = run_review(include_prediction=True)
+    report = run_review(include_prediction=True, force=force)
     print(f">>> 完成！数据日期: {report['date']}")
     print(f"    JSON: {p['reports'] / (report['date'] + '.json')}")
     print(f"    HTML: {p['reports'] / (report['date'] + '.html')}")
@@ -42,6 +42,7 @@ def main():
     sub = ap.add_subparsers(dest="cmd")
     rv = sub.add_parser("review", help="执行复盘")
     rv.add_argument("-v", "--verbose", action="store_true")
+    rv.add_argument("--force", action="store_true", help="强制重新采集生成（不用同日缓存）")
     sub.add_parser("serve", help="启动 Web 服务")
     bt = sub.add_parser("backtest", help="历史回测（收盘买/次日开盘卖）")
     bt.add_argument("--end", default=str(date.today()), help="回测截止日期 YYYY-MM-DD")
@@ -131,7 +132,8 @@ def main():
         out.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"已保存: {out}")
     elif args.cmd == "review":
-        do_review(verbose=args.verbose if hasattr(args, "verbose") else False)
+        do_review(verbose=args.verbose if hasattr(args, "verbose") else False,
+                  force=args.force if hasattr(args, "force") else False)
     elif args.cmd == "serve":
         do_serve()
     elif args.cmd == "report":

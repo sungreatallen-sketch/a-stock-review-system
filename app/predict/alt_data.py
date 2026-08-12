@@ -46,7 +46,7 @@ def _secid(code: str) -> str:
 
 def _kline_url(code: str, limit: int = 6) -> str:
     secid = _secid(code)
-    return ("https://push2his.eastmoney.com/api/qt/stock/kline/get"
+    return ("https://push2delay.eastmoney.com/api/qt/stock/kline/get"
             f"?secid={secid}&fields1=f1,f2,f3,f4,f5,f6"
             "&fields2=f51,f52,f53,f54,f55,f56,f57,f58"
             f"&klt=101&fqt=0&end=20500101&lmt={limit}")

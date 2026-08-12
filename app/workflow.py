@@ -31,17 +31,30 @@ def _build_tracking(tr, settle_result) -> dict:
         return {"settle": settle_result, "stats": {"count": 0}}
 
 
-def run_review(include_prediction: bool = True, auto_track: bool = True) -> dict:
+def _report_ok(report: dict) -> bool:
+    """报告是否'完整可用'：板块有数据 且 预测有标的（否则视为坏报告，需重生成）"""
+    if not report:
+        return False
+    sr = report.get("sector_rank") or []
+    if not sr:
+        return False
+    pred = report.get("prediction") or {}
+    if pred.get("status") != "M3完整版" or not pred.get("targets"):
+        return False
+    return True
+
+
+def run_review(include_prediction: bool = True, auto_track: bool = True, force: bool = False) -> dict:
     """执行完整复盘（采集→验证→报告），可选附标的预测
     auto_track: 先自动结算上期预测，再记录本期预测（模拟盘）
-    同日已生成报告时直接复用（避免重复采集/预测浪费 token）"""
+    同日已生成报告且完整时直接复用（避免重复采集/预测浪费 token）；不完整则重生成"""
     from datetime import date
     p = paths()
     st = Storage(p["data"], p["reports"])
     settle_result = None
     today = str(date.today())
 
-    # 同日内重复请求：复用已生成报告
+    # 同日内重复请求：仅当报告完整时才复用
     try:
         from .predict.cache import MCPCache, CachedMcp
         from .predict.backtest import Backtest, INDEX_TICKER
@@ -52,8 +65,8 @@ def run_review(include_prediction: bool = True, auto_track: bool = True) -> dict
         latest_day = pts[-1] if pts else today
         existing = st.load_report(latest_day)
         gen_day = ((existing or {}).get("meta") or {}).get("generated_at", "")[:10]
-        if existing and gen_day == today:
-            log.info("今日报告已存在(%s)，直接复用", latest_day)
+        if existing and gen_day == today and _report_ok(existing) and not force:
+            log.info("今日报告已存在且完整(%s)，直接复用", latest_day)
             if auto_track:
                 from .predict.track import Tracker
                 tr = Tracker(p["data"])

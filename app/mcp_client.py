@@ -3,6 +3,7 @@ import asyncio
 import glob
 import json
 import logging
+import socket
 import os
 import re
 from pathlib import Path
@@ -13,26 +14,41 @@ from mcp.client.streamable_http import streamablehttp_client
 log = logging.getLogger("mcp_client")
 
 
-def discover_token(log_dir: str) -> str:
-    """从 WorkBuddy 最新日志中提取 connector-proxy 的 Bearer token"""
+def discover_proxy(log_dir: str):
+    """从 WorkBuddy 最新日志发现 connector-proxy 的 (url, token)。
+    收集所有候选端口，逐个验证是否在监听，返回第一个可用者（WorkBuddy 重启端口会变）。"""
     ld = Path(log_dir).expanduser()
     if not ld.exists():
-        return ""
+        return "", ""
     files = sorted(glob.glob(str(ld / "2026-*" / "*cli_host*.log")), reverse=True)
-    marker = re.compile(r'127\.0\.0\.1:5505[0-9]/mcp')
-    auth = re.compile(r'"Authorization":"Bearer\s+([A-Za-z0-9_\-\.=]+)"')
+    url_marker = re.compile(r'"url"\s*:\s*"http://127\.0\.0\.1:(\d+)/mcp"')
+    auth = re.compile(r'"Authorization"\s*:\s*"Bearer\s+([A-Za-z0-9_\-\.=]+)"')
+    cands = {}
     for f in files[:20]:
         try:
             content = Path(f).read_text(encoding="utf-8", errors="ignore")
-            m = marker.search(content)
-            if m:
-                seg = content[m.start():m.start() + 4000]
+            for m in url_marker.finditer(content):
+                seg = content[m.start():m.start() + 5000]
                 a = auth.search(seg)
                 if a:
-                    return a.group(1)
+                    cands.setdefault(m.group(1), a.group(1))
         except Exception:
             continue
-    return ""
+    # 验证端口是否在监听，返回第一个可用
+    for port, token in cands.items():
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(0.5)
+            s.connect(("127.0.0.1", int(port)))
+            s.close()
+            return f"http://127.0.0.1:{port}/mcp", token
+        except Exception:
+            continue
+    # 都没有监听，退回最后一个候选
+    if cands:
+        port = list(cands.keys())[0]
+        return f"http://127.0.0.1:{port}/mcp", cands[port]
+    return "", ""
 
 
 class McpClient:
@@ -40,8 +56,14 @@ class McpClient:
 
     def __init__(self, url: str, token: str = "", log_dir: str = "~/.workbuddy/logs"):
         self.url = url
-        self.token = token or discover_token(log_dir)
+        self.token = token
         self._tools_cache = None
+        # 自动发现最新代理（WorkBuddy 重启后端口会变；发现到则覆盖）
+        d_url, d_token = discover_proxy(log_dir)
+        if d_url:
+            self.url = d_url
+            if d_token:
+                self.token = d_token
 
     @property
     def headers(self):

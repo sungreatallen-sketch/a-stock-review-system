@@ -16,17 +16,23 @@ try {
   const TASKS = __TASKS__
   const results = {}
   for (const t of TASKS) {
-    try {
-      const inner = `(async () => {
-        const url = ${JSON.stringify(t.url)};
-        try {
-          const res = await fetch(url, { headers: { 'Referer': ${JSON.stringify(t.referer)} } });
-          return await res.text();
-        } catch(e) { return 'FETCH_ERR:' + e.message; }
-      })()`
-      const r = await js(inner)
-      results[t.label] = r
-    } catch (e) { results[t.label] = 'JS_ERR:' + e.message }
+    const urls = t.urls && t.urls.length ? t.urls : (t.url ? [t.url] : [])
+    let out = 'NO_URL'
+    for (const u of urls) {
+      try {
+        const inner = `(async () => {
+          const url = ${JSON.stringify(u)};
+          try {
+            const res = await fetch(url, { headers: { 'Referer': ${JSON.stringify(t.referer)} } });
+            return await res.text();
+          } catch(e) { return 'FETCH_ERR:' + e.message; }
+        })()`
+        const r = await js(inner)
+        if (typeof r === 'string' && r.startsWith('FETCH_ERR')) { out = r; continue }
+        out = r; break
+      } catch (e) { out = 'JS_ERR:' + e.message }
+    }
+    results[t.label] = out
   }
   cliLog(JSON.stringify(results))
 } finally {
@@ -37,8 +43,15 @@ try {
 UT = "7eea3edcaed734bea9cbfc24409ed989"
 
 
-def _t(label, url, referer=BASE_PAGE):
-    return {"label": label, "url": url, "referer": referer}
+def _t(label, url, referer=BASE_PAGE, urls=None):
+    return {"label": label, "url": url, "referer": referer, "urls": urls}
+
+
+def _with_fallback(url, delay_host="https://push2delay.eastmoney.com", main_host="https://push2.eastmoney.com"):
+    """构造多候选 URL：push2delay 优先（限流较少），push2 兜底"""
+    if main_host in url:
+        return [url.replace(main_host, delay_host), url]
+    return [url]
 
 
 def build_tasks(d: str) -> list:
@@ -65,17 +78,26 @@ def build_tasks(d: str) -> list:
         _t("board_industry",
            "https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=10&po=1&np=1"
            "&fltt=2&invt=2&fid=f3&fs=m:90+t:2+f:!50"
-           "&fields=f2,f3,f12,f14,f62,f104,f105,f128,f140,f136"),
+           "&fields=f2,f3,f12,f14,f62,f104,f105,f128,f140,f136",
+           urls=_with_fallback("https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=10&po=1&np=1"
+                               "&fltt=2&invt=2&fid=f3&fs=m:90+t:2+f:!50"
+                               "&fields=f2,f3,f12,f14,f62,f104,f105,f128,f140,f136")),
         # 概念板块 Top10（涨幅）
         _t("board_concept",
            "https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=10&po=1&np=1"
            "&fltt=2&invt=2&fid=f3&fs=m:90+t:3+f:!50"
-           "&fields=f2,f3,f12,f14,f62,f104,f105,f128,f140,f136"),
+           "&fields=f2,f3,f12,f14,f62,f104,f105,f128,f140,f136",
+           urls=_with_fallback("https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=10&po=1&np=1"
+                               "&fltt=2&invt=2&fid=f3&fs=m:90+t:3+f:!50"
+                               "&fields=f2,f3,f12,f14,f62,f104,f105,f128,f140,f136")),
         # 大盘主力资金（上证，日线最近1天）
         _t("main_flow_index",
            "https://push2.eastmoney.com/api/qt/stock/fflow/kline/get?lmt=1&klt=101"
            "&secid=1.000001&fields1=f1,f2,f3,f7"
-           "&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65"),
+           "&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65",
+           urls=_with_fallback("https://push2.eastmoney.com/api/qt/stock/fflow/kline/get?lmt=1&klt=101"
+                               "&secid=1.000001&fields1=f1,f2,f3,f7"
+                               "&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65")),
         # 沪深港通（北向成交额）
         _t("hsgt",
            "https://push2.eastmoney.com/api/qt/kamt/get?fields1=f1,f2,f3,f4"

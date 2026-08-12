@@ -5,8 +5,9 @@
 # 规则变更：用户提出新要求 → 更新本文件 + RULES.md → git 提交。
 # ============================================================
 meta:
-  version: "1.0"
+  version: "1.1"
   effective_date: "2026-08-12"
+  issue_log: "docs/问题与修复记录.md (ISSUE-001 v1.1)"
   status: "权威规则（用户确认后生效）"
   priority_policy: "hard=红线必须满足；soft=建议项，尽量满足"
   self_check: "每次执行复盘/预测后，必须按本文件逐项自检并附在输出中"
@@ -235,3 +236,14 @@ rules:
     enforcement: "tracking 统计随报告输出；合规自检 tracking_count>0"
     implementation_status: "部分实现——模拟盘命中率已自动统计；'历史N日滚动回测'尚未作为显式步骤纳入每日流程"
     on_violation: "无命中率统计=不合格"
+
+
+  # ---------------- H. 数据源弹性（v1.1 新增） ----------------
+  - id: R27
+    category: 数据源
+    priority: hard
+    title: "数据源弹性：自动发现 + 多路兜底"
+    description: "MCP 代理端口/token 自动发现（禁止写死）；网页抓取多域名兜底；外部依赖异常显式上报"
+    enforcement: "mcp_client 自动发现；ego_scraper 多候选URL；合规自检 mcp_available"
+    implementation_status: "已实现（I01/I06/I16 修复）"
+    on_violation: "数据源失联必须上报用户审查，禁止静默降级"

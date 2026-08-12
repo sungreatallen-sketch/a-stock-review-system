@@ -93,6 +93,8 @@ def _check_one(rid: str, ctx: dict) -> tuple:
         return sell_plan, ("含买卖计划" if sell_plan else "❌ 缺止损/卖出计划结构化输出（待实现）")
     if rid == "R26":
         return tracking > 0, f"命中率统计 {tracking} 笔（滚动回测待显式化）"
+    if rid == "R27":
+        return mcp, ("数据源弹性：自动发现+多路兜底" if mcp else "❌ MCP 不可用，需上报用户审查")
     return True, ""
 
 

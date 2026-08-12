@@ -89,6 +89,22 @@ def _extract_text(content: str) -> str:
 
 
 def lan_ip() -> str:
+    """获取真实局域网 IP：优先默认路由网卡（Wi-Fi/以太网），排除 VPN(utun/tun)虚拟网卡。
+    避免用户开 VPN(如 clash TUN) 时取到 VPN 网卡 IP 导致手机打不开。"""
+    import subprocess as _sp
+    try:
+        out = _sp.run(["route", "-n", "get", "default"], capture_output=True, text=True, timeout=5)
+        iface = None
+        for line in out.stdout.splitlines():
+            if "interface:" in line:
+                iface = line.split(":", 1)[1].strip()
+        if iface and not iface.startswith(("utun", "tun")):
+            ip = _sp.run(["ipconfig", "getifaddr", iface], capture_output=True, text=True, timeout=5).stdout.strip()
+            if ip:
+                return ip
+    except Exception:
+        pass
+    # 兜底：socket 法
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("8.8.8.8", 80))

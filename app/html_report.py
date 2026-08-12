@@ -91,6 +91,11 @@ a{color:#5aa7ff;text-decoration:none}
 <div id="predBox" class="sub"></div>
 </div>
 
+<!-- 推荐跟踪 -->
+<div class="card"><h2>推荐跟踪（模拟盘）</h2>
+<div id="trackBox"></div>
+</div>
+
 <!-- 来源 -->
 <div class="card"><h2>数据来源</h2>
 <ul class="src" id="srcList"></ul>
@@ -198,6 +203,35 @@ function boardTable(rows){
   } else {
     box.innerHTML = p.status || '预测引擎开发中（M2/M3 上线）';
   }
+})();
+
+// 推荐跟踪
+(function(){
+  const t = DATA.tracking||{};
+  const stats = t.stats||{};
+  const settle = t.settle||{};
+  const box = document.getElementById('trackBox');
+  let html = '';
+  if (settle && settle.settled) {
+    html = `<div class="warn" style="margin-bottom:8px">昨日推荐已结算：${settle.settled} 只（${settle.sell_date||''} 开盘价）</div>`;
+  }
+  if (stats && stats.count) {
+    html += `<div class="emo">
+      <div class="b"><div class="v">${stats.win_rate??'-'}%</div><div class="l">累计命中率</div></div>
+      <div class="b"><div class="v">${stats.avg_ret??'-'}</div><div class="l">平均收益%</div></div>
+      <div class="b"><div class="v">${stats.best??'-'}</div><div class="l">最佳%</div></div>
+      <div class="b"><div class="v">${stats.count??'-'}</div><div class="l">已结算笔数</div></div></div>`;
+    const rows = stats.recent||[];
+    if (rows.length) {
+      html += `<div class="tbl-wrap" style="margin-top:10px"><table>
+        <tr><th>日期</th><th>标的</th><th>买入</th><th>开盘卖出</th><th>收益</th></tr>` +
+        rows.map(r=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.buy}</td><td>${r.sell}</td>
+          <td class="${cls(r.ret)}">${r.ret>=0?'+':''}${r.ret}%</td></tr>`).join('') + `</table></div>`;
+    }
+  } else {
+    html += `<div class="note">暂无已结算推荐记录（每天复盘/预测后，次日自动结算）</div>`;
+  }
+  box.innerHTML = html;
 })();
 
 // 来源

@@ -139,6 +139,19 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
         )
         if pred.get("market_view"):
             summary += f"\n📌 市场判断：{pred['market_view']}"
+        tracking = report.get("tracking") or {}
+        settle = tracking.get("settle") or {}
+        if settle.get("settled"):
+            tstats = tracking.get("stats") or {}
+            rows = (tstats.get("recent") or [])[:3]
+            prev_lines = ["\n\n📈 **昨日推荐复盘（已用今日开盘价结算）**"]
+            for r in rows:
+                sign = "+" if (r.get("ret") or 0) >= 0 else ""
+                prev_lines.append(f"· {r.get('name')}：{r.get('buy')} → {r.get('sell')}（{sign}{r.get('ret')}%）")
+            tstats_count = tstats.get("count") or 0
+            prev_lines.append(f"当日命中 {settle.get('settled')} 只全部结算；"
+                              f"累计命中率 {tstats.get('win_rate')}%（{tstats_count} 笔）｜平均 {tstats.get('avg_ret')}%")
+            summary += "\n".join(prev_lines)
         if targets:
             t_lines = ["\n**次日标的（收盘价附近买入，次日开盘卖出）**"]
             for i, t in enumerate(targets, 1):

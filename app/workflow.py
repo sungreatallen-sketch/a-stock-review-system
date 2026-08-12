@@ -21,6 +21,16 @@ def _get_cached_mcp():
     return CachedMcp(mcp, MCPCache(p["data"] / "mcp_cache.db"))
 
 
+def _build_tracking(tr, settle_result) -> dict:
+    """推荐跟踪数据：昨日结算 + 累计命中率统计"""
+    try:
+        stats = tr.stats(days=120)
+        return {"settle": settle_result, "stats": stats}
+    except Exception as e:
+        log.warning("跟踪数据组装失败: %s", str(e)[:100])
+        return {"settle": settle_result, "stats": {"count": 0}}
+
+
 def run_review(include_prediction: bool = True, auto_track: bool = True) -> dict:
     """执行完整复盘（采集→验证→报告），可选附标的预测
     auto_track: 先自动结算上期预测，再记录本期预测（模拟盘）
@@ -50,6 +60,7 @@ def run_review(include_prediction: bool = True, auto_track: bool = True) -> dict
                 settle_result = tr.settle_pending(cached)
                 existing["prediction"] = dict(existing.get("prediction") or {})
                 existing["prediction"]["settle"] = settle_result
+                existing["tracking"] = _build_tracking(tr, settle_result)
                 st.save_report(existing)
             existing["_settle"] = settle_result
             return existing
@@ -58,9 +69,9 @@ def run_review(include_prediction: bool = True, auto_track: bool = True) -> dict
 
     report = build_report(Collector().collect())
     if include_prediction:
+        from .predict.track import Tracker
+        tr = Tracker(p["data"])
         try:
-            from .predict.track import Tracker
-            tr = Tracker(p["data"])
             if auto_track:
                 settle_result = tr.settle_pending(cached)
             from .predict.daily import predict as predict_today
@@ -79,6 +90,9 @@ def run_review(include_prediction: bool = True, auto_track: bool = True) -> dict
         except Exception as e:
             log.warning("预测生成失败，报告仍包含复盘: %s", str(e)[:150])
             report["prediction"] = {"status": "预测生成失败", "error": str(e)[:200], "targets": []}
+        # 推荐跟踪（昨日结算+累计命中率）无论预测是否成功都嵌入
+        if auto_track:
+            report["tracking"] = _build_tracking(tr, settle_result)
     st.save_report(report)
     (p["reports"] / f"{report['date']}.html").write_text(render_html(report), encoding="utf-8")
     report["_settle"] = settle_result

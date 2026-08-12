@@ -106,13 +106,22 @@ class Tracker:
         if settled:
             return {"date": pred_date, "note": "该日预测已结算"}
 
-        # 找次日交易日
-        from .backtest import Backtest, INDEX_TICKER
+        # 找次日交易日（MCP 失败用 ego 兜底）
+        from .backtest import INDEX_TICKER
         today = today or str(date.today())
-        resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
-                           {"ticker": INDEX_TICKER, "market": "index",
-                            "start_date": pred_date, "end_date": today, "limit": 12})
-        pts = sorted({p["time"] for p in ((resp or {}).get("data") or {}).get("points") or []})
+        pts = []
+        try:
+            resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
+                               {"ticker": INDEX_TICKER, "market": "index",
+                                "start_date": pred_date, "end_date": today, "limit": 12})
+            pts = sorted({p["time"] for p in ((resp or {}).get("data") or {}).get("points") or []})
+        except Exception as e:
+            log.warning("MCP 交易日历失败，切 ego 兜底: %s", str(e)[:100])
+        if not pts:
+            from .alt_data import EgoOpenPrices
+            from ..config import paths as get_paths
+            ego = EgoOpenPrices(get_paths()["data"] / "ego_kline.db")
+            pts = ego.fetch_index_dates(today, limit=12)
         if pred_date not in pts:
             return {"date": pred_date, "note": "预测日非交易日"}
         idx = pts.index(pred_date)
@@ -123,21 +132,36 @@ class Tracker:
         if sell_date > today:
             return {"date": pred_date, "sell_date": sell_date, "note": "尚未到次日，暂不结算"}
 
-        # 拉取各标的次日开盘价
+        # 拉取各标的次日开盘价（MCP 优先，失败自动切 ego 浏览器兜底）
         targets = json.loads(row[1]).get("targets") or []
+        codes = [(t.get("code") or "").split(".")[0] for t in targets]
         opens = {}
-        for t in targets:
-            code = (t.get("code") or "").split(".")[0]
-            resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
-                               {"ticker": code, "market": "a_stock", "end_date": sell_date, "limit": 6})
-            pt = next((x for x in ((resp or {}).get("data") or {}).get("points") or []
-                       if x.get("time") == sell_date), None)
-            if pt and pt.get("open"):
-                opens[code] = pt["open"]
+        mcp_failed = False
+        for code in codes:
+            try:
+                resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
+                                   {"ticker": code, "market": "a_stock", "end_date": sell_date, "limit": 6})
+                pt = next((x for x in ((resp or {}).get("data") or {}).get("points") or []
+                           if x.get("time") == sell_date), None)
+                if pt and pt.get("open"):
+                    opens[code] = pt["open"]
+            except Exception as e:
+                mcp_failed = True
+                log.warning("MCP 取 %s 开盘价失败: %s", code, str(e)[:120])
+        if not opens and mcp_failed:
+            # 兜底：ego browser 东财K线
+            log.info("MCP 不可用，切换到 ego browser 获取开盘价")
+            from .alt_data import EgoOpenPrices
+            from ..config import paths as get_paths
+            ego = EgoOpenPrices(get_paths()["data"] / "ego_kline.db")
+            ego_opens = ego.fetch(sell_date, codes)
+            opens.update(ego_opens)
         if not opens:
             return {"date": pred_date, "sell_date": sell_date, "note": "次日开盘价未获取到"}
         res = self.settle(pred_date, opens)
         res["sell_date"] = sell_date
+        if mcp_failed:
+            res["data_source"] = "ego浏览器兜底"
         return res
 
     # ---------- 统计 ----------

@@ -10,6 +10,9 @@ meta:
   status: "权威规则（用户确认后生效）"
   priority_policy: "hard=红线必须满足；soft=建议项，尽量满足"
   self_check: "每次执行复盘/预测后，必须按本文件逐项自检并附在输出中"
+  requirement_baseline: "docs/需求规格说明书.md (REQ-001 v1.0, 原始需求固定)"
+  architecture_baseline: "docs/架构设计方案.md (ARCH-001 v1.0, 定稿)"
+  engineering_guide: "docs/工程化说明.md (ENG-001 v1.0)"
 
 rules:
   # ---------------- A. 数据源 ----------------

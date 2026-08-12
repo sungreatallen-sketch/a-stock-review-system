@@ -99,9 +99,10 @@ def lan_ip() -> str:
         s.close()
 
 
-def report_link(date_str: str) -> str:
-    """用 .local 主机名生成链接（LAN 内稳定，不受 DHCP IP 变化影响）"""
+def report_link(date_str: str) -> dict:
+    """生成所有可用的报告链接：公网隧道(如有) > .local > 当前IP；并附当前IP便于排查"""
     port = int(load_config()["web"].get("port", 8787))
+    ip = lan_ip()
     host = "localhost"
     try:
         import subprocess
@@ -112,7 +113,28 @@ def report_link(date_str: str) -> str:
             host = f"{h}.local"
     except Exception:
         pass
-    return f"http://{host}:{port}/report/{date_str}"
+    local = f"http://{host}:{port}/report/{date_str}"
+    ip_link = f"http://{ip}:{port}/report/{date_str}"
+    public = _read_tunnel_url()
+    return {"public": public, "local": local, "ip": ip_link, "ip_addr": ip}
+
+
+def _read_tunnel_url() -> str:
+    """从 cloudflared 日志读取当前公网隧道地址（未启用隧道返回空）"""
+    try:
+        logp = Path("/Users/yage/ashare-logs/tunnel.log")
+        if not logp.exists():
+            return ""
+        content = logp.read_text(encoding="utf-8", errors="ignore")
+        for line in reversed(content.splitlines()):
+            i = line.find("https://")
+            if i >= 0 and "trycloudflare.com" in line:
+                url = line[i:].strip().rstrip(".,;)")
+                if url.startswith("https://") and " " not in url:
+                    return url
+    except Exception:
+        pass
+    return ""
 
 
 
@@ -123,7 +145,8 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
         from ..workflow import run_review
         report = run_review(include_prediction=True)
         date_str = report["date"]
-        link = report_link(date_str)
+        links = report_link(date_str)
+        primary_url = links["public"] or links["ip"]
 
         mi = report["market_index"]
         emo = report["emotion"]
@@ -169,9 +192,13 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
                 {"tag": "markdown", "content": summary},
                 {"tag": "action", "actions": [
                     {"tag": "button", "text": {"tag": "plain_text", "content": "打开完整可视化报告"},
-                     "type": "primary", "url": link}]},
+                     "type": "primary", "url": primary_url},
+                    {"tag": "button", "text": {"tag": "plain_text", "content": "备用链接(.local)"},
+                     "type": "default", "url": links["local"]}]},
                 {"tag": "markdown",
-                 "content": "数据来源：东财公开数据 + 通达信/同舟/Wind MCP 交叉验证；消息面：同舟 doc_search。"},
+                 "content": "数据来源：东财公开数据 + 通达信/同舟/Wind MCP 交叉验证；消息面：同舟 doc_search。\n"
+                            "📱 若打不开：请确认手机与 Mac 连同一 Wi-Fi，Mac 当前 IP：**" + links["ip_addr"] + "**；"
+                            "或用 Safari 打开：`" + links["ip"] + "`"},
             ],
         }
         reply_card(client, message_id, card)

@@ -163,17 +163,19 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
         if pred.get("market_view"):
             summary += f"\n📌 市场判断：{pred['market_view']}"
         tracking = report.get("tracking") or {}
-        settle = tracking.get("settle") or {}
-        if settle.get("settled"):
-            tstats = tracking.get("stats") or {}
-            rows = (tstats.get("recent") or [])[:3]
-            prev_lines = ["\n\n📈 **昨日推荐复盘（已用今日开盘价结算）**"]
-            for r in rows:
+        tstats = tracking.get("stats") or {}
+        rows = (tstats.get("recent") or [])
+        if rows:
+            # 取最近一个已结算日的推荐明细（昨日推荐复盘）
+            latest_date = rows[0].get("date")
+            day_rows = [r for r in rows if r.get("date") == latest_date]
+            wins = sum(1 for r in day_rows if (r.get("ret") or 0) > 0)
+            prev_lines = [f"\n\n📈 **昨日推荐复盘（{latest_date} 推荐 → 次日开盘结算）**"]
+            for r in day_rows:
                 sign = "+" if (r.get("ret") or 0) >= 0 else ""
                 prev_lines.append(f"· {r.get('name')}：{r.get('buy')} → {r.get('sell')}（{sign}{r.get('ret')}%）")
-            tstats_count = tstats.get("count") or 0
-            prev_lines.append(f"当日命中 {settle.get('settled')} 只全部结算；"
-                              f"累计命中率 {tstats.get('win_rate')}%（{tstats_count} 笔）｜平均 {tstats.get('avg_ret')}%")
+            prev_lines.append(f"当日命中 {wins}/{len(day_rows)}｜累计命中率 {tstats.get('win_rate')}%"
+                              f"（{tstats.get('count')} 笔）｜平均 {tstats.get('avg_ret')}%")
             summary += "\n".join(prev_lines)
         if targets:
             t_lines = ["\n**次日标的（收盘价附近买入，次日开盘卖出）**"]

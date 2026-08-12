@@ -165,9 +165,9 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
         # 顶部醒目：昨日推荐命中率摘要（问题4：保证用户第一眼看到）
         tstats0 = (report.get("tracking") or {}).get("stats") or {}
         if tstats0.get("count"):
-            summary += (f"\n📈 **昨日推荐复盘**：开盘命中率 {tstats0.get('win_rate')}%"
-                        f"（{tstats0.get('count')} 笔）｜开盘平均 {tstats0.get('avg_ret')}%"
-                        f"｜收盘平均 {tstats0.get('avg_ret_close')}%")
+            summary += (f"\n📈 **昨日推荐复盘**：命中率 {tstats0.get('win_rate')}%"
+                        f"（{tstats0.get('count')} 笔）｜平均 {tstats0.get('avg_ret')}%"
+                        f"（昨收→今收）")
         tracking = report.get("tracking") or {}
         tstats = tracking.get("stats") or {}
         rows = (tstats.get("recent") or [])
@@ -176,15 +176,13 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
             latest_date = rows[0].get("date")
             day_rows = [r for r in rows if r.get("date") == latest_date]
             wins = sum(1 for r in day_rows if (r.get("ret") or 0) > 0)
-            prev_lines = [f"\n\n📈 **昨日推荐复盘（{latest_date} 买入 → 次日开盘卖出 / 收盘）**"]
+            prev_lines = [f"\n\n📈 **昨日推荐复盘（昨收买 → 今收卖，收盘-收盘）**"]
             for r in day_rows:
-                s1 = "+" if (r.get("ret") or 0) >= 0 else ""
-                s2 = "+" if (r.get("ret_close") or 0) >= 0 else ""
+                s = "+" if (r.get("ret") or 0) >= 0 else ""
                 prev_lines.append(
-                    f"· {r.get('name')}：买 {r.get('buy')} → 开 {r.get('sell')}（{s1}{r.get('ret')}%）"
-                    f"｜收 {r.get('sell_close')}（{s2}{r.get('ret_close')}%）")
-            prev_lines.append(f"开盘卖出命中 {wins}/{len(day_rows)}｜收盘平均 {tstats.get('avg_ret_close')}%"
-                              f"｜累计开盘胜率 {tstats.get('win_rate')}%（{tstats.get('count')} 笔）")
+                    f"· {r.get('name')}：昨收 {r.get('buy')} → 今收 {r.get('sell_close')}（{s}{r.get('ret')}%）")
+            prev_lines.append(f"命中 {wins}/{len(day_rows)}｜累计命中率 {tstats.get('win_rate')}%"
+                              f"（{tstats.get('count')} 笔）｜平均 {tstats.get('avg_ret')}%")
             summary += "\n".join(prev_lines)
         if targets:
             t_lines = ["\n**次日标的（收盘价附近买入，次日开盘卖出）**"]

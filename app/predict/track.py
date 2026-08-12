@@ -70,8 +70,9 @@ class Tracker:
         return row
 
     # ---------- 结算 ----------
-    def settle(self, pred_date: str, open_prices: dict, close_prices: dict = None) -> dict:
-        """pred_date: 预测日 T；open_prices: {code: T+1 开盘价}；close_prices: {code: T+1 收盘价}（可选）"""
+    def settle(self, pred_date: str, open_prices: dict = None, close_prices: dict = None) -> dict:
+        """pred_date: 预测日 T；按【昨收买→今收卖】收盘-收盘口径评估（用户确认 v1.4）
+        close_prices: {code: T+1 收盘价} 主口径；open_prices 仅作参考不再用于命中率"""
         close_prices = close_prices or {}
         conn = self._conn()
         conn.execute("DELETE FROM prediction_results WHERE date=?", (pred_date,))
@@ -84,18 +85,16 @@ class Tracker:
         missing = []
         for t in targets:
             code = (t.get("code") or "").split(".")[0]
-            buy = t.get("参考买入价(收盘)")
-            sell = open_prices.get(code)
-            sell_close = close_prices.get(code)
-            if not buy or not sell:
+            buy = t.get("参考买入价(收盘)")   # 昨收
+            sell_close = close_prices.get(code)  # 今收
+            if not buy or not sell_close:
                 missing.append(code)
                 continue
-            ret = round((sell / buy - 1) * 100, 2)
-            ret_close = round((sell_close / buy - 1) * 100, 2) if sell_close else None
+            ret = round((sell_close / buy - 1) * 100, 2)   # 命中率按 今收/昨收
             conn.execute(
                 "INSERT INTO prediction_results(date, target_code, target_name, buy_price, sell_price, ret, sell_close, ret_close, status, created_at) "
                 "VALUES(?,?,?,?,?,?,?,?,?,?)",
-                (pred_date, code, t.get("name"), buy, sell, ret, sell_close, ret_close, "settled",
+                (pred_date, code, t.get("name"), buy, sell_close, ret, sell_close, ret, "settled",
                  __import__("datetime").datetime.now().isoformat()))
             saved += 1
         conn.commit()

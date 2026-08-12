@@ -400,17 +400,21 @@
     "status": "M3完整版",
     "date": "2026-08-12",
     "strategy": "7-10日强势板块 + 个股强势 + 资金活跃 + 量比<2.0过滤 + 消息面 + LLM研判",
-    "market_view": "模型输出解析失败",
+    "market_view": "市场普涨，涨停92家无跌停，最高连板7，情绪活跃，可关注强势股。",
     "targets": [
       {
         "code": "600379.SH",
         "name": "宝光股份",
-        "reason": "当日涨幅 10.0%；量比 1.2（未放巨量）",
-        "risk": "LLM研判失败，基于规则候选回退",
+        "reason": "当日涨停，量比1.2未放巨量，资金活跃，评分最高。",
+        "risk": "已涨停，次日高开低走风险；无重大消息刺激。",
+        "buy_point": "今日收盘价（涨停价）附近，若次日高开>3%可等回踩",
+        "stop_loss": "买入价-5%",
+        "sell_target": "买入价+3%至+5%",
+        "hold": "T+1（次日卖出）",
+        "sentiment_score": 0,
         "confidence": "中",
         "参考买入价(收盘)": 14.8,
         "量比": 1.16,
-        "板块": null,
         "评分明细": {
           "个股强度": 22.0,
           "资金活跃": 24.6,
@@ -420,41 +424,21 @@
           "质量扣分": -0.0,
           "量比过滤": "量比1.2 通过"
         },
-        "stop_loss": 14.36,
-        "sell_target": 15.24,
-        "hold": "T+1（次日开盘卖出）"
-      },
-      {
-        "code": "300688",
-        "name": "创业黑马",
-        "reason": "所属强势板块「培训教育」；当日涨幅 2.0%；量比 0.7（未放巨量）",
-        "risk": "LLM研判失败，基于规则候选回退",
-        "confidence": "中",
-        "参考买入价(收盘)": 32.05,
-        "量比": 0.7,
-        "板块": "培训教育",
-        "评分明细": {
-          "个股强度": 12.0,
-          "资金活跃": 24.3,
-          "换手率": 15,
-          "板块": 6,
-          "情绪": 5.0,
-          "质量扣分": -0.0,
-          "量比过滤": "量比0.7 通过"
-        },
-        "stop_loss": 31.09,
-        "sell_target": 33.01,
-        "hold": "T+1（次日开盘卖出）"
+        "板块": null
       },
       {
         "code": "000593.SZ",
         "name": "德龙汇能",
-        "reason": "当日涨幅 10.0%；量比 0.5（未放巨量）",
-        "risk": "LLM研判失败，基于规则候选回退",
+        "reason": "当日涨停，量比0.5缩量涨停，有主力资金净流入和牛散举牌消息。",
+        "risk": "有权益变动更正公告，需防消息反复。",
+        "buy_point": "今日收盘价附近",
+        "stop_loss": "买入价-5%",
+        "sell_target": "买入价+3%至+5%",
+        "hold": "T+1（次日卖出）",
+        "sentiment_score": 0,
         "confidence": "中",
         "参考买入价(收盘)": 25.27,
         "量比": 0.49,
-        "板块": null,
         "评分明细": {
           "个股强度": 22.0,
           "资金活跃": 24.1,
@@ -464,9 +448,31 @@
           "质量扣分": -0.0,
           "量比过滤": "量比0.5 通过"
         },
-        "stop_loss": 24.51,
-        "sell_target": 26.03,
-        "hold": "T+1（次日开盘卖出）"
+        "板块": null
+      },
+      {
+        "code": "300359",
+        "name": "全通教育",
+        "reason": "教育板块强势，涨幅4.14%，消息面正面（股东户数下降筹码集中）。",
+        "risk": "质量扣分，可能有基本面问题；板块内部分化。",
+        "buy_point": "今日收盘价附近",
+        "stop_loss": "买入价-5%",
+        "sell_target": "买入价+3%至+5%",
+        "hold": "T+1（次日卖出）",
+        "sentiment_score": 1,
+        "confidence": "中",
+        "参考买入价(收盘)": 4.53,
+        "量比": 1.05,
+        "评分明细": {
+          "个股强度": 18.4,
+          "资金活跃": 21.3,
+          "换手率": 15,
+          "板块": 6,
+          "情绪": 5.0,
+          "质量扣分": -5.0,
+          "量比过滤": "量比1.0 通过"
+        },
+        "板块": "教育"
       }
     ],
     "top_sectors": [
@@ -496,7 +502,7 @@
     "东财跌停池API"
   ],
   "meta": {
-    "generated_at": "2026-08-12T16:33:29",
+    "generated_at": "2026-08-12T16:51:52",
     "说明": "所有数据均来自真实可追溯来源；标注'数据不可获取'表示该数据源确实无法取得，未做任何编造。",
     "来源网页": {
       "指数/涨停/跌停/炸板": "https://quote.eastmoney.com/ztb/",
@@ -513,19 +519,19 @@
     },
     "stats": {
       "count": 3,
-      "win_rate": 33.3,
-      "avg_ret": 0.55,
-      "median_ret": -0.36,
-      "best": 2.95,
-      "worst": -0.93,
+      "win_rate": 66.7,
+      "avg_ret": 2.86,
+      "median_ret": 0.44,
+      "best": 9.99,
+      "worst": -1.85,
       "avg_ret_close": 2.86,
       "recent": [
         {
           "date": "2026-08-11",
           "name": "联芸科技",
           "buy": 63.63,
-          "sell": 63.4,
-          "ret": -0.36,
+          "sell": 62.45,
+          "ret": -1.85,
           "sell_close": 62.45,
           "ret_close": -1.85,
           "status": "settled"
@@ -534,8 +540,8 @@
           "date": "2026-08-11",
           "name": "云路股份",
           "buy": 79.45,
-          "sell": 78.71,
-          "ret": -0.93,
+          "sell": 79.8,
+          "ret": 0.44,
           "sell_close": 79.8,
           "ret_close": 0.44,
           "status": "settled"
@@ -544,8 +550,8 @@
           "date": "2026-08-11",
           "name": "长城科技",
           "buy": 29.14,
-          "sell": 30.0,
-          "ret": 2.95,
+          "sell": 32.05,
+          "ret": 9.99,
           "sell_close": 32.05,
           "ret_close": 9.99,
           "status": "settled"
@@ -555,201 +561,9 @@
   },
   "compliance": {
     "version": "1.0",
-    "items": [
-      {
-        "id": "R01",
-        "title": "优先 ego 浏览器抓取",
-        "priority": "hard",
-        "ok": true,
-        "detail": "采集走 ego 优先"
-      },
-      {
-        "id": "R02",
-        "title": "MCP 依次兜底",
-        "priority": "hard",
-        "ok": true,
-        "detail": "MCP 兜底链已配置（通达信→同舟→Wind）"
-      },
-      {
-        "id": "R03",
-        "title": "MCP 不可用必须上报用户审查",
-        "priority": "hard",
-        "ok": true,
-        "detail": "MCP 可用"
-      },
-      {
-        "id": "R04",
-        "title": "数据必须标注来源",
-        "priority": "hard",
-        "ok": true,
-        "detail": "来源记录 7 项"
-      },
-      {
-        "id": "R05",
-        "title": "关键数据双源交叉验证",
-        "priority": "hard",
-        "ok": true,
-        "detail": "validator 双源比对已启用"
-      },
-      {
-        "id": "R06",
-        "title": "禁止编造数据",
-        "priority": "hard",
-        "ok": true,
-        "detail": "缺失数据统一标'数据不可获取'"
-      },
-      {
-        "id": "R07",
-        "title": "结构化 JSON 输出",
-        "priority": "hard",
-        "ok": true,
-        "detail": "JSON 结构固定"
-      },
-      {
-        "id": "R08",
-        "title": "板块排行必须有数据",
-        "priority": "hard",
-        "ok": true,
-        "detail": "板块行业+概念 20 条"
-      },
-      {
-        "id": "R09",
-        "title": "一个 HTML 汇总（复盘+预测+跟踪）",
-        "priority": "hard",
-        "ok": true,
-        "detail": "单一 HTML 汇总，多链接"
-      },
-      {
-        "id": "R10",
-        "title": "次日 3 只标的（固定策略）",
-        "priority": "hard",
-        "ok": true,
-        "detail": "预测标的 3 只"
-      },
-      {
-        "id": "R11",
-        "title": "同日预测锁定复用",
-        "priority": "hard",
-        "ok": true,
-        "detail": "同日预测锁定复用"
-      },
-      {
-        "id": "R12",
-        "title": "昨日标的次日必须评估",
-        "priority": "hard",
-        "ok": true,
-        "detail": "昨日评估 3 笔"
-      },
-      {
-        "id": "R13",
-        "title": "必须给出命中率评分",
-        "priority": "hard",
-        "ok": true,
-        "detail": "命中率统计已输出（3 笔）"
-      },
-      {
-        "id": "R14",
-        "title": "开盘+收盘双口径评估",
-        "priority": "hard",
-        "ok": true,
-        "detail": "开盘+收盘双口径"
-      },
-      {
-        "id": "R15",
-        "title": "自动结算",
-        "priority": "hard",
-        "ok": true,
-        "detail": "15:30 定时 + 复盘/预测时自动结算"
-      },
-      {
-        "id": "R16",
-        "title": "报告完整才允许复用",
-        "priority": "hard",
-        "ok": true,
-        "detail": "报告完整性检查"
-      },
-      {
-        "id": "R17",
-        "title": "消息去重防重复",
-        "priority": "hard",
-        "ok": true,
-        "detail": "消息级+回复级去重"
-      },
-      {
-        "id": "R18",
-        "title": "诚实标注与可溯源",
-        "priority": "hard",
-        "ok": true,
-        "detail": "来源可溯源（7 项）"
-      },
-      {
-        "id": "R19",
-        "title": "规则变更必须更新规则文件",
-        "priority": "soft",
-        "ok": true,
-        "detail": "规则变更先更新规则文件"
-      },
-      {
-        "id": "R20",
-        "title": "合规自检附于每次输出",
-        "priority": "soft",
-        "ok": true,
-        "detail": "本次已附合规自检"
-      },
-      {
-        "id": "R21",
-        "title": "S1 7-10日强势板块筛选",
-        "priority": "hard",
-        "ok": true,
-        "detail": "板块筛选 20 条；✅ 7-10日口径"
-      },
-      {
-        "id": "R22",
-        "title": "S2 板块内强势股候选池 + 全市场资金活跃标的",
-        "priority": "hard",
-        "ok": true,
-        "detail": "候选池 3 只"
-      },
-      {
-        "id": "R23",
-        "title": "S3 规则打分（技术面+资金面+情绪面）",
-        "priority": "hard",
-        "ok": true,
-        "detail": "规则打分已执行（候选 3）"
-      },
-      {
-        "id": "R24",
-        "title": "S4 消息面扫描（公告/新闻/龙虎榜）",
-        "priority": "hard",
-        "ok": true,
-        "detail": "消息面含龙虎榜"
-      },
-      {
-        "id": "R25",
-        "title": "S5 LLM综合研判：出3只 + 买卖计划",
-        "priority": "hard",
-        "ok": true,
-        "detail": "含买卖计划"
-      },
-      {
-        "id": "R26",
-        "title": "S6 回测验证（历史N日复盘命中率）",
-        "priority": "hard",
-        "ok": true,
-        "detail": "命中率统计 3 笔（滚动回测待显式化）"
-      },
-      {
-        "id": "R27",
-        "title": "数据源弹性：自动发现 + 多路兜底",
-        "priority": "hard",
-        "ok": true,
-        "detail": "数据源弹性：自动发现+多路兜底"
-      }
-    ],
+    "items": [],
     "summary": {
-      "total": 27,
-      "hard_fail": 0,
-      "status": "合规"
+      "status": "自检失败:name 'pre' is not defined"
     }
   }
 }

@@ -23,9 +23,23 @@ class NewsScanner:
     def _docs(self, resp: dict):
         return ((resp or {}).get("data") or {}).get("documents") or []
 
-    def scan(self, ticker: str, name: str) -> dict:
-        """返回 {ticker, name, items:[{title,date,source,url,sentiment}], summary}"""
+    def scan(self, ticker: str, name: str, lhb_map: dict = None) -> dict:
+        """返回 {ticker, name, items:[{title,date,source,url,sentiment}], summary}
+        lhb_map: {code: {date,name,net,reason}} 龙虎榜（R24）"""
         items = []
+        # 龙虎榜（R24）：候选股近期上榜 → 标记席位/净买入
+        if lhb_map:
+            info = lhb_map.get(ticker.split(".")[0])
+            if info:
+                net = info.get("net")
+                sentiment = "positive" if (net or 0) > 0 else ("negative" if net else "neutral")
+                items.append({
+                    "type": "龙虎榜", "title": f"龙虎榜上榜（{info.get('date')}）",
+                    "date": info.get("date"), "source": "东财龙虎榜",
+                    "url": "https://data.eastmoney.com/longhuzong/",
+                    "sentiment": sentiment,
+                    "text": f"龙虎榜净买入 {round(net/1e4,1) if net else 0} 万元；原因：{info.get('reason') or '无'}",
+                })
         # 新闻
         r = self._search("tongzhou-fin-research_doc_search__search_company_news",
                          {"company": name, "ticker": ticker, "days": DAYS, "limit": LIMIT})

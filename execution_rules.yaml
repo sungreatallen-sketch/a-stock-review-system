@@ -5,7 +5,7 @@
 # 规则变更：用户提出新要求 → 更新本文件 + RULES.md → git 提交。
 # ============================================================
 meta:
-  version: "1.1"
+  version: "1.2"
   effective_date: "2026-08-12"
   issue_log: "docs/问题与修复记录.md (ISSUE-001 v1.1)"
   status: "权威规则（用户确认后生效）"
@@ -189,7 +189,7 @@ rules:
     title: "S1 7-10日强势板块筛选"
     description: "第一步：筛选近7-10日强势板块（板块涨幅/资金流），作为方向层"
     enforcement: "候选池板块筛选；合规自检 sector_count>0"
-    implementation_status: "部分实现——当前用同舟5日主力净流入窗口，与'7-10日'口径不一致，需对齐为7-10日"
+    implementation_status: "已实现（问题3，2026-08-12）：东财行业板块10日涨幅（ego优先），同舟20日资金流兜底"
     on_violation: "板块为空=不合格，强制重生成"
 
   - id: R22
@@ -216,7 +216,7 @@ rules:
     title: "S4 消息面扫描（公告/新闻/龙虎榜）"
     description: "第四步：对候选股扫描公告、新闻、龙虎榜，情绪初筛"
     enforcement: "news.py 扫描；合规自检 news_has_lhb（龙虎榜必须纳入）"
-    implementation_status: "部分实现——当前有新闻/公告/事件，缺龙虎榜维度"
+    implementation_status: "已实现（问题3，2026-08-12）：消息面纳入龙虎榜（东财龙虎榜，含净买入/原因）"
     on_violation: "消息面缺失标注'无检索到消息'，龙虎榜缺失须上报待补"
 
   - id: R25
@@ -225,7 +225,7 @@ rules:
     title: "S5 LLM综合研判：出3只 + 买卖计划"
     description: "第五步：DeepSeek基于候选+消息面+市场环境输出3只，且必须含买卖计划（买点/止损/卖出区间）"
     enforcement: "judge.py 输出 targets 含 reason/risk/confidence/买卖计划；合规自检 has_sell_plan"
-    implementation_status: "部分实现——已出3只+逻辑/风险/置信，缺止损与卖出计划结构化输出"
+    implementation_status: "已实现（问题3，2026-08-12）：LLM输出+缺省兜底保证止损/目标/持仓"
     on_violation: "无买卖计划=不完整，需补充"
 
   - id: R26

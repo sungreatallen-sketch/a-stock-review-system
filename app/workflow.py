@@ -72,13 +72,14 @@ def _attach_compliance(report: dict) -> dict:
         has_close = any(r.get("ret_close") is not None for r in recent)
         pred = report.get("prediction") or {}
         targets = pred.get("targets") or []
-        has_sell_plan = any((t.get("止损") or t.get("卖出计划") or t.get("卖点")) for t in targets)
+        has_sell_plan = any((t.get("止损") or t.get("卖出计划") or t.get("卖点")
+                             or t.get("stop_loss") or t.get("sell_target")) for t in targets)
         ctx = {
             "mcp_available": _mcp_available(),
             "sectors_count": len(report.get("sector_rank") or []),
             "prediction_targets": len(targets),
             "candidate_count": pred.get("candidate_count", len(targets)),
-            "sector_window_ok": False,  # 当前用5日资金流窗口，未对齐7-10日口径
+            "sector_window_ok": str(pred.get("sector_window", "")).startswith("10日"),
             "tracking_count": tstats.get("count", 0),
             "has_close_price": has_close,
             "news_has_lhb": bool(pred.get("news_has_lhb", False)),
@@ -147,6 +148,8 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
                 "market_view": pred.get("market_view"),
                 "targets": pred["targets"],
                 "top_sectors": pred["top_sectors"],
+                "sector_window": pred.get("sector_window"),
+                "news_has_lhb": pred.get("news_has_lhb", False),
                 "settle": settle_result,
             }
         except Exception as e:

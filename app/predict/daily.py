@@ -66,12 +66,18 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
         pick["量比"] = round(vr, 2) if vr else None
         pick["逻辑"] = _build_logic(pick, vr)
 
-    # 消息面
+    # 消息面（含龙虎榜 R24）
+    from .alt_data import recent_lhb
+    lhb_map = {}
+    try:
+        lhb_map = recent_lhb()
+    except Exception as e:
+        log.warning("龙虎榜获取失败: %s", str(e)[:120])
     scanner = NewsScanner(cached)
     news = {}
     for pick in top5:
         code = pick["ticker"].split(".")[0]
-        news[code] = scanner.scan(code, pick["name"])
+        news[code] = scanner.scan(code, pick["name"], lhb_map=lhb_map)
 
     # 市场环境（来自当日复盘报告）
     market = _market_context(t)
@@ -97,7 +103,7 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
                     "参考买入价(收盘)": p.get("参考买入价(收盘)"), "量比": p.get("量比"),
                     "板块": p.get("sector_name"), "评分明细": p.get("factors"),
                 } for p in top5[:3]]
-            # 回填买入价
+            # 回填买入价 + 买卖计划字段归一化/缺省兜底（R25）
             price_map = {p["ticker"].split(".")[0]: p for p in top5}
             for tgt in targets:
                 code = tgt.get("code", "").split(".")[0]
@@ -106,6 +112,22 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
                 tgt["量比"] = tgt.get("量比") or src.get("量比")
                 tgt["评分明细"] = src.get("factors")
                 tgt["板块"] = src.get("sector_name")
+                # 归一化 LLM 可能的键名
+                for k in ("stop_loss", "止损", "止损位", "止损价"):
+                    if tgt.get(k) and not tgt.get("stop_loss"):
+                        tgt["stop_loss"] = tgt[k]
+                for k in ("sell_target", "卖出区间", "目标价", "卖出目标"):
+                    if tgt.get(k) and not tgt.get("sell_target"):
+                        tgt["sell_target"] = tgt[k]
+                for k in ("hold", "持仓", "持仓时间"):
+                    if tgt.get(k) and not tgt.get("hold"):
+                        tgt["hold"] = tgt[k]
+                # 缺省兜底：基于真实买入价（-3% 止损 / +3% 目标 / T+1）
+                buy = tgt.get("参考买入价(收盘)")
+                if buy:
+                    tgt.setdefault("stop_loss", round(buy * 0.97, 2))
+                    tgt.setdefault("sell_target", round(buy * 1.03, 2))
+                    tgt.setdefault("hold", "T+1（次日开盘卖出）")
         except Exception as e:
             log.exception("LLM 研判失败，回退规则结果")
             targets = [{"code": p["ticker"], "name": p["name"], "reason": p.get("逻辑"),
@@ -114,7 +136,8 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
 
     return {
         "date": t,
-        "strategy": "板块5日资金流 + 个股强势 + 资金活跃 + 量比<2.0过滤 + 消息面 + LLM研判",
+        "strategy": "7-10日强势板块 + 个股强势 + 资金活跃 + 量比<2.0过滤 + 消息面 + LLM研判",
+        "sector_window": pool["meta"].get("sector_window"),
         "market_view": (llm_result or {}).get("market_view"),
         "targets": targets,
         "rule_candidates": [
@@ -124,6 +147,7 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
             for p in top5
         ],
         "news": news,
+        "news_has_lhb": bool(lhb_map),
         "top_sectors": pool["meta"]["top_sectors"],
         "candidate_count": len(pool["candidates"]),
     }

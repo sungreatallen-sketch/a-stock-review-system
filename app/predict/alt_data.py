@@ -3,6 +3,7 @@
 """
 import json
 import logging
+from ..config import paths
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -228,3 +229,92 @@ class EgoDailyData:
                     continue
             log.info("已取 %d/%d 只", min(i + batch, len(codes)), len(codes))
         return out
+
+
+class EgoBoardData:
+    """东财行业板块（10日涨幅）与板块成分股——R21 7-10日强势板块口径（ego优先）"""
+
+    SECTOR_URL = ("https://push2delay.eastmoney.com/api/qt/clist/get?pn=1&pz={n}&po=1&np=1&fltt=2&invt=2"
+                  "&fid=f110&fs=m:90+t:2+f:!50&fields=f2,f3,f12,f14,f109,f110,f128")
+    STOCK_URL = ("https://push2delay.eastmoney.com/api/qt/clist/get?pn=1&pz={n}&po=1&np=1&fltt=2&invt=2"
+                 "&fid=f3&fs=b:{bk}&fields=f12,f14,f2,f3,f6,f8,f20,f100")
+
+    def __init__(self, cache_db=None):
+        self.ego = EgoDailyData()
+        self.cache_db = cache_db
+
+    def top_sectors_10d(self, n: int = 10) -> list:
+        """东财行业板块按10日涨幅 Top n；返回 [{code,name,pct_10d,pct_5d,leader}]"""
+        url = self.SECTOR_URL.format(n=n)
+        script = (NODE.replace("BASE_PLACEHOLDER", json.dumps(BASE)).replace("__JOBS__", json.dumps(
+            [{"label": "sectors", "url": url, "referer": "https://quote.eastmoney.com/center/boardlist.html"}],
+            ensure_ascii=False)))
+        r = self.ego._run(script)
+        j = json.loads(r.get("sectors") or "{}")
+        diff = ((j or {}).get("data") or {}).get("diff") or []
+        out = []
+        for i, d in enumerate(diff, 1):
+            if d.get("f12"):
+                out.append({"rank": i, "code": str(d.get("f12")), "name": d.get("f14"),
+                            "pct_10d": d.get("f110"), "pct_5d": d.get("f109"),
+                            "pct_today": d.get("f3"), "leader": d.get("f128")})
+        return out[:n]
+
+    def sector_stocks(self, bk: str, n: int = 8) -> list:
+        """板块成分股按当日涨幅 Top n；返回 [_clean_rank_row 兼容字段]"""
+        url = self.STOCK_URL.format(bk=bk, n=n)
+        script = (NODE.replace("BASE_PLACEHOLDER", json.dumps(BASE)).replace("__JOBS__", json.dumps(
+            [{"label": "st", "url": url, "referer": "https://quote.eastmoney.com/center/boardlist.html"}],
+            ensure_ascii=False)))
+        r = self.ego._run(script)
+        j = json.loads(r.get("st") or "{}")
+        diff = ((j or {}).get("data") or {}).get("diff") or []
+        rows = []
+        for d in diff:
+            if not d.get("f12"):
+                continue
+            rows.append({
+                "ticker": str(d.get("f12")), "name": d.get("f14"),
+                "close": d.get("f2"), "change_ratio": d.get("f3"),
+                "amount": d.get("f6"), "turnover_rate": d.get("f8"),
+                "market_cap": d.get("f20"), "industry": d.get("f100"),
+            })
+        return rows
+
+
+def recent_lhb(page_size: int = 100) -> dict:
+    """东财龙虎榜近期明细（ego抓取，缓存到 ego_kline.db）
+    返回 {code: {date, name, net, reason, seat}}"""
+    import sqlite3 as _sq
+    cache_db = paths()["data"] / "ego_kline.db"
+    if cache_db:
+        conn = _sq.connect(cache_db)
+        conn.execute("CREATE TABLE IF NOT EXISTS ego_lhb (code TEXT PRIMARY KEY, info TEXT)")
+        rows = conn.execute("SELECT code, info FROM ego_lhb").fetchall()
+        conn.close()
+        if rows:
+            return {c: json.loads(i) for c, i in rows}
+    url = ("https://datacenter-web.eastmoney.com/api/data/v1/get"
+           "?reportName=RPT_DAILYBILLBOARD_DETAILSNEW&columns=ALL"
+           f"&pageSize={page_size}&sortColumns=TRADE_DATE&sortTypes=-1&source=WEB&client=WEB")
+    script = (NODE.replace("BASE_PLACEHOLDER", json.dumps(BASE)).replace("__JOBS__", json.dumps(
+        [{"label": "lhb", "url": url, "referer": "https://data.eastmoney.com/longhuzong/"}], ensure_ascii=False)))
+    ego = EgoDailyData()
+    r = ego._run(script)
+    j = json.loads(r.get("lhb") or "{}")
+    rows = ((j or {}).get("result") or {}).get("data") or []
+    out = {}
+    for d in rows:
+        code = str(d.get("SECURITY_CODE") or "")
+        if not code:
+            continue
+        out.setdefault(code, {"date": (d.get("TRADE_DATE") or "")[:10],
+                              "name": d.get("SECURITY_NAME_ABBR"),
+                              "net": d.get("BILLBOARD_NET_AMT"),
+                              "reason": d.get("EXPLANATION")})
+    if cache_db and out:
+        conn = _sq.connect(cache_db)
+        for c, info in out.items():
+            conn.execute("INSERT OR REPLACE INTO ego_lhb(code, info) VALUES(?,?)", (c, json.dumps(info, ensure_ascii=False)))
+        conn.commit(); conn.close()
+    return out

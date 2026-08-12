@@ -185,8 +185,13 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
             for i, t in enumerate(targets, 1):
                 buy = t.get("参考买入价(收盘)")
                 conf = t.get("confidence") or "中"
+                stop = t.get("stop_loss")
+                sell = t.get("sell_target")
+                plan = f"｜止损 {stop}" if stop else ""
+                if sell:
+                    plan += f"｜目标 {sell}"
                 t_lines.append(f"{i}. **{t.get('name')}**（{t.get('code')}）· 置信{conf}"
-                               f"｜参考买入 {buy}\n   逻辑：{t.get('reason')}\n   ⚠️风险：{t.get('risk')}")
+                               f"｜参考买入 {buy}{plan}\n   逻辑：{t.get('reason')}\n   ⚠️风险：{t.get('risk')}")
             summary += "\n" + "\n".join(t_lines)
         summary += "\n⚠️ 仅供研究参考，不构成投资建议。详细图表见完整 HTML 报告。"
         comp = (report.get("compliance") or {}).get("summary") or {}

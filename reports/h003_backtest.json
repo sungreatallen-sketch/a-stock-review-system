@@ -1,0 +1,236 @@
+{
+  "hypothesis": "H003",
+  "params": {
+    "vol_th": 2.0,
+    "dd_min": 0.05,
+    "dd_max": 0.2,
+    "window": 15,
+    "spacing": 20,
+    "universe": "东财成交额Top100",
+    "period": "['2025-05-08', 9.5, 9.57, 9.61, 9.45, 304341.0, 290624109.22] ~ 2026-08-12"
+  },
+  "result": {
+    "variants": {
+      "A": {
+        "count": 24,
+        "by_horizon": {
+          "1": {
+            "count": 24,
+            "win_rate": 50.0,
+            "avg": 0.77,
+            "median": 0.21,
+            "best": 9.01,
+            "worst": -7.63,
+            "index_avg": -0.14,
+            "excess_vs_index": 0.91,
+            "universe_avg": 0.44,
+            "excess_vs_universe": 0.34,
+            "universe_beat_rate": 45.8,
+            "up_mkt_excess": [
+              -0.47,
+              19
+            ],
+            "down_mkt_excess": [
+              3.41,
+              5
+            ]
+          },
+          "3": {
+            "count": 24,
+            "win_rate": 45.8,
+            "avg": 0.15,
+            "median": -1.04,
+            "best": 12.74,
+            "worst": -9.0,
+            "index_avg": -0.03,
+            "excess_vs_index": 0.18,
+            "universe_avg": 0.7,
+            "excess_vs_universe": -0.54,
+            "universe_beat_rate": 37.5,
+            "up_mkt_excess": [
+              -0.74,
+              19
+            ],
+            "down_mkt_excess": [
+              0.19,
+              5
+            ]
+          },
+          "5": {
+            "count": 24,
+            "win_rate": 37.5,
+            "avg": -0.68,
+            "median": -3.1,
+            "best": 18.49,
+            "worst": -19.39,
+            "index_avg": -0.03,
+            "excess_vs_index": -0.65,
+            "universe_avg": 1.21,
+            "excess_vs_universe": -1.89,
+            "universe_beat_rate": 33.3,
+            "up_mkt_excess": [
+              -3.53,
+              19
+            ],
+            "down_mkt_excess": [
+              4.34,
+              5
+            ]
+          },
+          "10": {
+            "count": 24,
+            "win_rate": 62.5,
+            "avg": 1.24,
+            "median": 3.58,
+            "best": 30.5,
+            "worst": -28.96,
+            "index_avg": 0.14,
+            "excess_vs_index": 1.1,
+            "universe_avg": 4.33,
+            "excess_vs_universe": -3.09,
+            "universe_beat_rate": 29.2,
+            "up_mkt_excess": [
+              -2.23,
+              19
+            ],
+            "down_mkt_excess": [
+              -6.34,
+              5
+            ]
+          },
+          "20": {
+            "count": 24,
+            "win_rate": 50.0,
+            "avg": 11.1,
+            "median": 0.52,
+            "best": 100.22,
+            "worst": -30.47,
+            "index_avg": -0.07,
+            "excess_vs_index": 11.17,
+            "universe_avg": 9.76,
+            "excess_vs_universe": 1.34,
+            "universe_beat_rate": 37.5,
+            "up_mkt_excess": [
+              1.31,
+              19
+            ],
+            "down_mkt_excess": [
+              1.43,
+              5
+            ]
+          }
+        }
+      },
+      "B": {
+        "count": 153,
+        "by_horizon": {
+          "1": {
+            "count": 153,
+            "win_rate": 51.6,
+            "avg": 0.4,
+            "median": 0.17,
+            "best": 20.01,
+            "worst": -10.96,
+            "index_avg": 0.12,
+            "excess_vs_index": 0.28,
+            "universe_avg": 0.38,
+            "excess_vs_universe": 0.03,
+            "universe_beat_rate": 39.9,
+            "up_mkt_excess": [
+              -0.12,
+              82
+            ],
+            "down_mkt_excess": [
+              0.2,
+              71
+            ]
+          },
+          "3": {
+            "count": 153,
+            "win_rate": 49.0,
+            "avg": 0.33,
+            "median": -0.13,
+            "best": 24.39,
+            "worst": -24.14,
+            "index_avg": -0.03,
+            "excess_vs_index": 0.36,
+            "universe_avg": 0.52,
+            "excess_vs_universe": -0.18,
+            "universe_beat_rate": 42.5,
+            "up_mkt_excess": [
+              -0.26,
+              82
+            ],
+            "down_mkt_excess": [
+              -0.09,
+              71
+            ]
+          },
+          "5": {
+            "count": 153,
+            "win_rate": 54.9,
+            "avg": 0.69,
+            "median": 1.01,
+            "best": 27.08,
+            "worst": -28.7,
+            "index_avg": 0.17,
+            "excess_vs_index": 0.53,
+            "universe_avg": 1.68,
+            "excess_vs_universe": -0.98,
+            "universe_beat_rate": 37.9,
+            "up_mkt_excess": [
+              -1.06,
+              82
+            ],
+            "down_mkt_excess": [
+              -0.9,
+              71
+            ]
+          },
+          "10": {
+            "count": 152,
+            "win_rate": 58.6,
+            "avg": 3.86,
+            "median": 2.25,
+            "best": 74.79,
+            "worst": -38.22,
+            "index_avg": 0.28,
+            "excess_vs_index": 3.58,
+            "universe_avg": 3.81,
+            "excess_vs_universe": 0.05,
+            "universe_beat_rate": 38.2,
+            "up_mkt_excess": [
+              -0.29,
+              82
+            ],
+            "down_mkt_excess": [
+              0.46,
+              70
+            ]
+          },
+          "20": {
+            "count": 148,
+            "win_rate": 62.8,
+            "avg": 11.3,
+            "median": 5.85,
+            "best": 117.68,
+            "worst": -27.03,
+            "index_avg": 0.84,
+            "excess_vs_index": 10.46,
+            "universe_avg": 9.79,
+            "excess_vs_universe": 1.51,
+            "universe_beat_rate": 36.5,
+            "up_mkt_excess": [
+              1.65,
+              82
+            ],
+            "down_mkt_excess": [
+              1.34,
+              66
+            ]
+          }
+        }
+      }
+    }
+  }
+}

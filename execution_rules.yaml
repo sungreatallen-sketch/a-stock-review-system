@@ -247,3 +247,14 @@ rules:
     enforcement: "mcp_client 自动发现；ego_scraper 多候选URL；合规自检 mcp_available"
     implementation_status: "已实现（I01/I06/I16 修复）"
     on_violation: "数据源失联必须上报用户审查，禁止静默降级"
+
+
+  # ---------------- I. 因子管理（v1.2 新增） ----------------
+  - id: R28
+    category: 因子管理
+    priority: soft
+    title: "因子接入需先成熟并经用户批准"
+    description: "投资经验因子先以工程文件隔离管理(factors/investment_factors.yaml)，独立回测验证+用户批准后才允许接入系统"
+    enforcement: "factors/ 目录与 app/predict 隔离；接入前更新因子状态为 approved"
+    implementation_status: "已建立隔离因子库（46个因子，未接入）"
+    on_violation: "未批准因子进入系统视为违规"

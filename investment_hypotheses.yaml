@@ -13,6 +13,7 @@ meta:
   source: "用户个人投资经验总结（原文）"
   date: "2026-08-12"
   status_policy: "全部为 hypothesis；独立回测验证后方可升格为 validated/invalidated"
+  factor_library: "factors/investment_factors.yaml (工程因子库，隔离未接入)"
   constraints:
     - "不评判假设对错"
     - "不为回测结果而修改假设"

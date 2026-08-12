@@ -1,0 +1,639 @@
+meta:
+  file: 工程因子库（投资经验派生）
+  source: investment_hypotheses.yaml
+  version: '1.0'
+  isolation: 本文件仅作因子管理与未来接入候选，预测系统当前【不读取】此文件
+  promotion_rule: 因子需先独立回测验证→用户批准→才可接入系统（见 factors/README.md）
+  count: 46
+factors:
+- id: F001
+  hypothesis_id: H001
+  name: 活跃度得分=过去60日日均换手率分位
+  category: 市场注意力
+  definition_note: 截面分位，需全市场截面
+  signal_candidates: &id001
+  - 活跃度得分 > 全市场P80 → 高关注组
+  - 活跃度得分 < 全市场P20 → 低关注组（规避组）
+  data_requirements: &id002
+  - 全市场日线 OHLCV（含换手率、流通市值）
+  - 涨停/跌停池历史
+  - 龙虎榜历史
+  test_periods: &id003
+  - T+5
+  - T+10
+  - T+20
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——样本内出现与假设相反方向的显著结果，但股票池同质化，需更大样本复核'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F002
+  hypothesis_id: H001
+  name: 活跃度得分=过去120日成交额/流通市值 的分位
+  category: 市场注意力
+  definition_note: 衡量换手深度
+  signal_candidates: *id001
+  data_requirements: *id002
+  test_periods: *id003
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——样本内出现与假设相反方向的显著结果，但股票池同质化，需更大样本复核'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F003
+  hypothesis_id: H001
+  name: 活跃度得分=过去120日(涨停+涨超7%)天数
+  category: 市场注意力
+  definition_note: 衡量事件关注度
+  signal_candidates: *id001
+  data_requirements: *id002
+  test_periods: *id003
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——样本内出现与假设相反方向的显著结果，但股票池同质化，需更大样本复核'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F004
+  hypothesis_id: H001
+  name: 活跃度得分=过去120日龙虎榜上榜次数
+  category: 市场注意力
+  definition_note: 衡量游资/机构关注
+  signal_candidates: *id001
+  data_requirements: *id002
+  test_periods: *id003
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——样本内出现与假设相反方向的显著结果，但股票池同质化，需更大样本复核'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F005
+  hypothesis_id: H002
+  name: 量比 = 当日成交量 / 过去5日均量，且 > 2
+  category: 成交量/资金
+  definition_note: ''
+  signal_candidates: &id004
+  - 'A: 当日量比≥2 且 前5日量比<1.2'
+  - 'B: 当日成交额/流通市值 > 过去60日P90 且 当日收阳'
+  data_requirements: &id005
+  - 日线 OHLCV（量）、5分钟/分钟量（东财量比口径）、流通市值
+  test_periods: &id006
+  - T+3
+  - T+5
+  - T+10
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——放量异动相对自身股票池无显著超额（与H003结论一致）'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F006
+  hypothesis_id: H002
+  name: 量比（分钟口径）> 2 且前5日 < 1.2（由平静到异动）
+  category: 成交量/资金
+  definition_note: ''
+  signal_candidates: *id004
+  data_requirements: *id005
+  test_periods: *id006
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——放量异动相对自身股票池无显著超额（与H003结论一致）'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F007
+  hypothesis_id: H002
+  name: 成交额/流通市值 突破过去60日 P90
+  category: 成交量/资金
+  definition_note: ''
+  signal_candidates: *id004
+  data_requirements: *id005
+  test_periods: *id006
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——放量异动相对自身股票池无显著超额（与H003结论一致）'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F008
+  hypothesis_id: H002
+  name: 放量倍数>2 且 换手率处于 3%~15% 温和区间
+  category: 成交量/资金
+  definition_note: ''
+  signal_candidates: *id004
+  data_requirements: *id005
+  test_periods: *id006
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——放量异动相对自身股票池无显著超额（与H003结论一致）'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F009
+  hypothesis_id: H003
+  name: 阶段1=H002放量信号；阶段2=其后 N 日内回调幅度≥X%且回调日缩量；阶段3=回调后放量上涨
+  category: 成交量/资金
+  definition_note: ''
+  signal_candidates: &id007
+  - 'A: 放量日→回调(缩量幅度≥X%)→放量上涨，完整序列'
+  - 'B: 仅''放量后回调''作为未来拉升的预测信号（不要求确认上涨）'
+  data_requirements: &id008
+  - 日线 OHLCV、量能
+  test_periods: &id009
+  - T+5
+  - T+10
+  - T+20
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——证据偏弱，未升格；受样本量与池口径局限，亦不判定 invalidated'
+  - '第2次(2026-08-12): 维持 hypothesis——两个窗口(15个月/90天)均未出现相对股票池的显著正超额，但样本均受限，不做 invalidated
+    判定'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F010
+  hypothesis_id: H003
+  name: 回调低点后 M 日内创放量日以来新高
+  category: 成交量/资金
+  definition_note: ''
+  signal_candidates: *id007
+  data_requirements: *id008
+  test_periods: *id009
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——证据偏弱，未升格；受样本量与池口径局限，亦不判定 invalidated'
+  - '第2次(2026-08-12): 维持 hypothesis——两个窗口(15个月/90天)均未出现相对股票池的显著正超额，但样本均受限，不做 invalidated
+    判定'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F011
+  hypothesis_id: H004
+  name: 过去120日 振幅>8% 的天数占比
+  category: 风险/退出
+  definition_note: ''
+  signal_candidates: &id010
+  - 'A: 上述因子任一分位 > P80 → 标记''反复炒作''，规避'
+  - 'B: 因子加权得分排序，最低分位组规避'
+  data_requirements: &id011
+  - 日线 OHLCV、涨停/跌停历史
+  test_periods: &id012
+  - T+5
+  - T+10
+  - T+20
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——样本内未发现''反复炒作股后续跑输''的证据'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F012
+  hypothesis_id: H004
+  name: 过去120日 '涨停后10日最大回撤>15%' 事件次数
+  category: 风险/退出
+  definition_note: ''
+  signal_candidates: *id010
+  data_requirements: *id011
+  test_periods: *id012
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——样本内未发现''反复炒作股后续跑输''的证据'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F013
+  hypothesis_id: H004
+  name: 过去120日 创新高后回撤>20% 的次数
+  category: 风险/退出
+  definition_note: ''
+  signal_candidates: *id010
+  data_requirements: *id011
+  test_periods: *id012
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——样本内未发现''反复炒作股后续跑输''的证据'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F014
+  hypothesis_id: H005
+  name: PB 历史分位<20% 且 ROE 稳定>10%
+  category: 其他
+  definition_note: ''
+  signal_candidates: &id013
+  - 'A: 估值分位<P20 且 盈利质量达标 → 低估组'
+  - 'B: 仅估值分位<P20（不要求盈利质量，检验纯低估）'
+  data_requirements: &id014
+  - 财务数据（PE/PB/PS/ROE 历史）、行业分类
+  test_periods: &id015
+  - T+10
+  - T+20
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F015
+  hypothesis_id: H005
+  name: PE 历史分位<20% 且 盈利未连续恶化
+  category: 其他
+  definition_note: ''
+  signal_candidates: *id013
+  data_requirements: *id014
+  test_periods: *id015
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F016
+  hypothesis_id: H005
+  name: 行业相对估值（个股估值/行业中位）<0.8
+  category: 其他
+  definition_note: ''
+  signal_candidates: *id013
+  data_requirements: *id014
+  test_periods: *id015
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F017
+  hypothesis_id: H006
+  name: 触及前60日最低点±2% 且 当日下影/实体>0.5
+  category: 价格行为
+  definition_note: ''
+  signal_candidates: &id016
+  - 'A: 触及支撑+下影线止跌'
+  - 'B: 触及支撑+缩量企稳'
+  - 'C: 多支撑测试后（≥2次）再次触及'
+  data_requirements: &id017
+  - 日线 OHLCV
+  test_periods: &id018
+  - T+1
+  - T+3
+  - T+5
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——样本内支撑位止跌买入相对股票池为负(短持有期)，方向存疑'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F018
+  hypothesis_id: H006
+  name: 缩量回踩前低（当日量<5日均量0.6倍）后重新收于前低上方
+  category: 价格行为
+  definition_note: ''
+  signal_candidates: *id016
+  data_requirements: *id017
+  test_periods: *id018
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——样本内支撑位止跌买入相对股票池为负(短持有期)，方向存疑'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F019
+  hypothesis_id: H006
+  name: 前低支撑被测试≥2次后第3次触及（事不过三）
+  category: 价格行为
+  definition_note: ''
+  signal_candidates: *id016
+  data_requirements: *id017
+  test_periods: *id018
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——样本内支撑位止跌买入相对股票池为负(短持有期)，方向存疑'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F020
+  hypothesis_id: H007
+  name: 触及前60日高点±2% 且 当日上影/实体>1
+  category: 价格行为
+  definition_note: ''
+  signal_candidates: &id019
+  - 'A: 触及压力+长上影'
+  - 'B: 触及压力+放量滞涨'
+  - 'C: 多次触及无法突破'
+  data_requirements: &id020
+  - 日线 OHLCV
+  test_periods: &id021
+  - T+1
+  - T+3
+  - T+5
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——''压力位滞涨次日卖出''获得边缘支持(T+1显著负)，持续性弱'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F021
+  hypothesis_id: H007
+  name: 高位放量滞涨（量>2倍5日均量 但 涨幅<1%）
+  category: 价格行为
+  definition_note: ''
+  signal_candidates: *id019
+  data_requirements: *id020
+  test_periods: *id021
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——''压力位滞涨次日卖出''获得边缘支持(T+1显著负)，持续性弱'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F022
+  hypothesis_id: H007
+  name: 连续多日触及前高无法突破（≥3日）
+  category: 价格行为
+  definition_note: ''
+  signal_candidates: *id019
+  data_requirements: *id020
+  test_periods: *id021
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——''压力位滞涨次日卖出''获得边缘支持(T+1显著负)，持续性弱'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F023
+  hypothesis_id: H008
+  name: 情绪温度 = 涨停数 - 炸板数 - 跌停数（或其分位）
+  category: 市场情绪
+  definition_note: ''
+  signal_candidates: &id022
+  - 'A: 情绪温度从冰点（P20以下）回升至P50以上（修复期）'
+  - 'B: 赚钱效应连续2日转正'
+  - 'C: 连板高度抬升且晋级率>30%'
+  - 注：'天时地利'（大盘与个股位置）难以统一量化，此处只量化'人和'部分，其余需另设假设
+  data_requirements: &id023
+  - 涨停/跌停/炸板/连板池历史（全市场）
+  test_periods: &id024
+  - T+1
+  - T+3
+  - T+5
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F024
+  hypothesis_id: H008
+  name: 赚钱效应 = 昨日涨停股今日平均涨幅 > 0
+  category: 市场情绪
+  definition_note: ''
+  signal_candidates: *id022
+  data_requirements: *id023
+  test_periods: *id024
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F025
+  hypothesis_id: H008
+  name: 连板晋级率（2板→3板比例）抬升
+  category: 市场情绪
+  definition_note: ''
+  signal_candidates: *id022
+  data_requirements: *id023
+  test_periods: *id024
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F026
+  hypothesis_id: H009
+  name: 10日涨幅>30% 后出现 放量长上影（上影/实体>1）
+  category: 风险/退出
+  definition_note: ''
+  signal_candidates: &id025
+  - 'A: N日涨幅阈值+放量长上影'
+  - 'B: 加速上涨+滞涨'
+  - 'C: 高位炸板/尾盘跳水'
+  data_requirements: &id026
+  - 日线 OHLCV、涨停/炸板历史
+  test_periods: &id027
+  - T+1
+  - T+3
+  - T+5
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——''回光返照是卖点''获得样本内支持(T+5显著负超额)'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F027
+  hypothesis_id: H009
+  name: 加速上涨（当日涨幅>前5日均涨幅2倍）后滞涨/长上影
+  category: 风险/退出
+  definition_note: ''
+  signal_candidates: *id025
+  data_requirements: *id026
+  test_periods: *id027
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——''回光返照是卖点''获得样本内支持(T+5显著负超额)'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F028
+  hypothesis_id: H009
+  name: 高位涨停打开（炸板）或尾盘跳水
+  category: 风险/退出
+  definition_note: ''
+  signal_candidates: *id025
+  data_requirements: *id026
+  test_periods: *id027
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——''回光返照是卖点''获得样本内支持(T+5显著负超额)'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F029
+  hypothesis_id: H010
+  name: 吸筹期：主力连续净流入但股价滞涨（净流入累计>X亿，涨幅<Y%）
+  category: 资金成本
+  definition_note: ''
+  signal_candidates: &id028
+  - 完整阶段状态机：吸筹→洗盘→拉升 序列作为持有信号；出货期作为离场信号
+  - 各阶段独立验证（如仅'吸筹'信号）
+  data_requirements: &id029
+  - 分笔/分钟资金流（主力/大单口径）、日线、股东户数（低频）、融资余额
+  test_periods: &id030
+  - T+5
+  - T+10
+  - T+20
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F030
+  hypothesis_id: H010
+  name: 洗盘期：吸筹后缩量回调（量<5日均量50%，幅度<20%）
+  category: 资金成本
+  definition_note: ''
+  signal_candidates: *id028
+  data_requirements: *id029
+  test_periods: *id030
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F031
+  hypothesis_id: H010
+  name: 拉升期：放量突破前高（量比>2 且 创N日新高）
+  category: 资金成本
+  definition_note: ''
+  signal_candidates: *id028
+  data_requirements: *id029
+  test_periods: *id030
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F032
+  hypothesis_id: H010
+  name: 出货期：高位放量滞涨/主力净流出转负
+  category: 资金成本
+  definition_note: ''
+  signal_candidates: *id028
+  data_requirements: *id029
+  test_periods: *id030
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F033
+  hypothesis_id: H011
+  name: 过去120日 ADX<20（趋势弱）
+  category: 趋势
+  definition_note: ''
+  signal_candidates: &id031
+  - 'A: ADX<20 → 震荡组'
+  - 'B: 振幅受限+创新高次数=0 → 横盘组'
+  data_requirements: &id032
+  - 日线 OHLCV
+  test_periods: &id033
+  - T+10
+  - T+20
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——样本内未发现''低趋势震荡股长期跑输''，与假设不一致'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F034
+  hypothesis_id: H011
+  name: 过去120日最高/最低振幅<40% 且 当前价仍在中位±10%
+  category: 趋势
+  definition_note: ''
+  signal_candidates: *id031
+  data_requirements: *id032
+  test_periods: *id033
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——样本内未发现''低趋势震荡股长期跑输''，与假设不一致'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F035
+  hypothesis_id: H011
+  name: 过去120日创新高次数=0
+  category: 趋势
+  definition_note: ''
+  signal_candidates: *id031
+  data_requirements: *id032
+  test_periods: *id033
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——样本内未发现''低趋势震荡股长期跑输''，与假设不一致'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F036
+  hypothesis_id: H012
+  name: 龙头=板块内过去5日成交额第一且涨幅前3
+  category: 市场情绪
+  definition_note: ''
+  signal_candidates: &id034
+  - 'A: 板块热度未退 + 龙头回调至支撑（H006 信号叠加）'
+  - 'B: 龙头回调 + 板块相对强度（RS）仍为正'
+  data_requirements: &id035
+  - 板块/概念成分、板块涨停统计、日线
+  test_periods: &id036
+  - T+3
+  - T+5
+  - T+10
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F037
+  hypothesis_id: H012
+  name: 板块热度=板块内涨停家数连续≥2日
+  category: 市场情绪
+  definition_note: ''
+  signal_candidates: *id034
+  data_requirements: *id035
+  test_periods: *id036
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F038
+  hypothesis_id: H012
+  name: 龙头回调（自高点-10%~-20%）且板块热度未退
+  category: 市场情绪
+  definition_note: ''
+  signal_candidates: *id034
+  data_requirements: *id035
+  test_periods: *id036
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F039
+  hypothesis_id: H013
+  name: 主力资金连续N日净流出 且 股价滞涨/阴跌
+  category: 风险/退出
+  definition_note: ''
+  signal_candidates: &id037
+  - 'A: 资金持续流出+量能萎缩 → 规避'
+  - 'B: 量能萎缩+无波动 → 死水组'
+  data_requirements: &id038
+  - 资金流（主力/大单口径）、日线、股东户数（季报/定期）
+  test_periods: &id039
+  - T+5
+  - T+10
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——''主力离场/散户上班股应规避''获强支持(量价近似口径，各期显著负超额)'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F040
+  hypothesis_id: H013
+  name: 成交额低于过去60日均值50% 且 过去20日无涨停
+  category: 风险/退出
+  definition_note: ''
+  signal_candidates: *id037
+  data_requirements: *id038
+  test_periods: *id039
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——''主力离场/散户上班股应规避''获强支持(量价近似口径，各期显著负超额)'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F041
+  hypothesis_id: H013
+  name: 股东户数环比上升>10%（低频）
+  category: 风险/退出
+  definition_note: ''
+  signal_candidates: *id037
+  data_requirements: *id038
+  test_periods: *id039
+  status: hypothesis
+  verification_log:
+  - '第1次(2026-08-12): 维持 hypothesis——''主力离场/散户上班股应规避''获强支持(量价近似口径，各期显著负超额)'
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F042
+  hypothesis_id: H014
+  name: 题材首日关联涨停家数（≥3家）→ 题材强度
+  category: 事件驱动
+  definition_note: ''
+  signal_candidates: &id040
+  - 'A: 事件出现日 T0，取关联板块首日强度'
+  - 'B: 题材热度（连续涨停家数）维持N日'
+  data_requirements: &id041
+  - 事件库（政策/公告/新词/产业事件）与时间戳
+  - 题材/概念板块成分与涨停统计
+  test_periods: &id042
+  - T+1
+  - T+3
+  - T+5
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F043
+  hypothesis_id: H014
+  name: 题材持续天数与龙头涨幅
+  category: 事件驱动
+  definition_note: ''
+  signal_candidates: *id040
+  data_requirements: *id041
+  test_periods: *id042
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F044
+  hypothesis_id: H014
+  name: 新名词/新政策事件与板块涨跌的关联
+  category: 事件驱动
+  definition_note: ''
+  signal_candidates: *id040
+  data_requirements: *id041
+  test_periods: *id042
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F045
+  hypothesis_id: H016
+  name: 市值>全市场P90 → 大蓝筹组
+  category: 其他
+  definition_note: ''
+  signal_candidates: &id043
+  - 'A: 按市值分位分组（Q1小盘~Q5大盘）比较风险收益'
+  data_requirements: &id044
+  - 全市场日线、市值、财务（盈利稳定）
+  test_periods: &id045
+  - T+20
+  - 长期（滚动年度）
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）
+- id: F046
+  hypothesis_id: H016
+  name: 市值分组下的 波动率/回撤/夏普 对比
+  category: 其他
+  definition_note: ''
+  signal_candidates: *id043
+  data_requirements: *id044
+  test_periods: *id045
+  status: hypothesis
+  verification_log: []
+  system_integration: 未接入（等待成熟后经用户批准再纳入）

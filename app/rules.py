@@ -95,6 +95,8 @@ def _check_one(rid: str, ctx: dict) -> tuple:
         return tracking > 0, f"命中率统计 {tracking} 笔（滚动回测待显式化）"
     if rid == "R27":
         return mcp, ("数据源弹性：自动发现+多路兜底" if mcp else "❌ MCP 不可用，需上报用户审查")
+    if rid == "R28":
+        return True, "因子隔离管理（46个未接入，等待成熟+批准）"
     return True, ""
 
 

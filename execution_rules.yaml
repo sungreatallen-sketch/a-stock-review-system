@@ -5,7 +5,7 @@
 # 规则变更：用户提出新要求 → 更新本文件 + RULES.md → git 提交。
 # ============================================================
 meta:
-  version: "1.2"
+  version: "1.3"
   effective_date: "2026-08-12"
   issue_log: "docs/问题与修复记录.md (ISSUE-001 v1.1)"
   status: "权威规则（用户确认后生效）"
@@ -258,3 +258,23 @@ rules:
     enforcement: "factors/ 目录与 app/predict 隔离；接入前更新因子状态为 approved"
     implementation_status: "已建立隔离因子库（46个因子，未接入）"
     on_violation: "未批准因子进入系统视为违规"
+
+
+  # ---------------- J. 变更日志与运行预读（v1.3 新增） ----------------
+  - id: R29
+    category: 变更管理
+    priority: hard
+    title: "所有修复/更新必须记录详细日志"
+    description: "每次修复或更新必须写入详细日志（docs/变更与回滚记录.md + docs/问题与修复记录.md），含根因、修复、提交hash、回滚方法；无日志视为未完成"
+    enforcement: "变更必须同步 CHG-001/ISSUE-001 并提交；回滚索引可查"
+    implementation_status: "已建立 CHG-001（22条变更回滚索引）+ ISSUE-001（I01-I24）"
+    on_violation: "修复/更新未记日志=违规，需补记后才算完成"
+
+  - id: R30
+    category: 运行控制
+    priority: hard
+    title: "系统运行前必须预读执行规则"
+    description: "每次复盘/预测执行前，必须读取 execution_rules.yaml 并校验（版本、条数、可解析），预读失败禁止继续执行"
+    enforcement: "workflow.run_review 与 bot 启动时调用 rules.preload_rules() 预读并日志记录"
+    implementation_status: "已接入 workflow 与 bot 启动预读"
+    on_violation: "规则文件缺失/损坏时必须停机上报，不得静默运行"

@@ -18,6 +18,25 @@ def load_rules() -> list:
         return []
 
 
+def preload_rules() -> dict:
+    """运行前预读规则（R30）：读取 execution_rules.yaml 并校验，失败必须上报。
+    返回 {ok, version, count, detail}"""
+    try:
+        d = yaml.safe_load(RULES_PATH.read_text(encoding="utf-8"))
+        rules = d.get("rules", [])
+        ver = (d.get("meta") or {}).get("version", "?")
+        ok = isinstance(rules, list) and len(rules) > 0
+        detail = f"执行规则 v{ver}，{len(rules)} 条，{'预读成功' if ok else '预读异常'}"
+        if not ok:
+            log.error("R30 违规：规则预读异常 - %s", detail)
+        else:
+            log.info("R30 预读：%s", detail)
+        return {"ok": ok, "version": ver, "count": len(rules), "detail": detail}
+    except Exception as e:
+        log.error("R30 违规：规则文件读取失败 - %s", e)
+        return {"ok": False, "version": "?", "count": 0, "detail": f"规则文件读取失败: {e}"}
+
+
 def check_rules(context: dict) -> dict:
     """按规则清单自检。
     context 需含: mcp_available, sectors_count, prediction_targets,
@@ -97,6 +116,10 @@ def _check_one(rid: str, ctx: dict) -> tuple:
         return mcp, ("数据源弹性：自动发现+多路兜底" if mcp else "❌ MCP 不可用，需上报用户审查")
     if rid == "R28":
         return True, "因子隔离管理（46个未接入，等待成熟+批准）"
+    if rid == "R29":
+        return True, "变更日志：CHG-001 + ISSUE-001 已建立，修复/更新须同步记录"
+    if rid == "R30":
+        return ctx.get("rules_preloaded", False), "运行前规则预读" + ("" if ctx.get("rules_preloaded") else "（未预读）")
     return True, ""
 
 

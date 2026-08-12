@@ -280,6 +280,11 @@ def on_message(client: lark.Client, data: P2ImMessageReceiveV1) -> None:
 def main() -> None:
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    from ..rules import preload_rules
+    pre = preload_rules()          # R30：机器人启动时预读执行规则
+    if not pre.get("ok"):
+        logger.error("R30 违规：规则预读失败，机器人不启动 - %s", pre.get("detail"))
+        raise SystemExit("规则文件异常，禁止启动")
     cfg = load_config()
     app_id = cfg["feishu"].get("app_id", "")
     app_secret = cfg["feishu"].get("app_secret", "")

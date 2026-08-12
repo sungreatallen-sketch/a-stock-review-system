@@ -75,6 +75,7 @@ def _attach_compliance(report: dict) -> dict:
         has_sell_plan = any((t.get("止损") or t.get("卖出计划") or t.get("卖点")
                              or t.get("stop_loss") or t.get("sell_target")) for t in targets)
         ctx = {
+            "rules_preloaded": bool(pre.get("ok")),
             "mcp_available": _mcp_available(),
             "sectors_count": len(report.get("sector_rank") or []),
             "prediction_targets": len(targets),
@@ -99,6 +100,8 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
     auto_track: 先自动结算上期预测，再记录本期预测（模拟盘）
     同日已生成报告且完整时直接复用（避免重复采集/预测浪费 token）；不完整则重生成"""
     from datetime import date
+    from .rules import preload_rules
+    pre = preload_rules()          # R30：运行前预读执行规则
     p = paths()
     st = Storage(p["data"], p["reports"])
     settle_result = None

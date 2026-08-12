@@ -46,7 +46,7 @@ def build_user(candidates: list, news: dict, market: dict = None) -> str:
 
 
 def judge(candidates: list, news: dict, market: dict = None,
-          effort: str = "high", max_tokens: int = 3000) -> dict:
+          effort: str = "high", max_tokens: int = 5000) -> dict:
     """调用 DeepSeek 研判，返回 {market_view, targets:[...], raw}"""
     user = build_user(candidates, news, market)
     text = deepseek_chat(SYSTEM, user, json_mode=True, max_tokens=max_tokens, effort=effort)

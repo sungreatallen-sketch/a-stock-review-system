@@ -177,3 +177,58 @@ rules:
     description: "每次复盘/预测输出末尾附合规自检清单（✅/❌+原因）"
     enforcement: "report['compliance'] 字段 + 卡片提示"
     on_violation: "无自检视为未遵守规则"
+
+  # ---------------- G. 预测六步流程（核心算法架构） ----------------
+  - id: R21
+    category: 预测流程
+    priority: hard
+    title: "S1 7-10日强势板块筛选"
+    description: "第一步：筛选近7-10日强势板块（板块涨幅/资金流），作为方向层"
+    enforcement: "候选池板块筛选；合规自检 sector_count>0"
+    implementation_status: "部分实现——当前用同舟5日主力净流入窗口，与'7-10日'口径不一致，需对齐为7-10日"
+    on_violation: "板块为空=不合格，强制重生成"
+
+  - id: R22
+    category: 预测流程
+    priority: hard
+    title: "S2 板块内强势股候选池 + 全市场资金活跃标的"
+    description: "第二步：强势板块内个股 + 全市场成交额活跃标的 + 涨停股，剔除ST/北交所"
+    enforcement: "candidate_pool.build 产出候选；合规自检候选数>0"
+    implementation_status: "已实现"
+    on_violation: "候选池为空=不合格"
+
+  - id: R23
+    category: 预测流程
+    priority: hard
+    title: "S3 规则打分（技术面+资金面+情绪面）"
+    description: "第三步：板块强度/个股强度/资金活跃/换手率/情绪/质量 综合打分"
+    enforcement: "scoring.score_pool 执行；评分进入候选排序"
+    implementation_status: "已实现（技术面目前以当日涨幅+换手为主，深度技术指标待增强）"
+    on_violation: "无评分=不合格"
+
+  - id: R24
+    category: 预测流程
+    priority: hard
+    title: "S4 消息面扫描（公告/新闻/龙虎榜）"
+    description: "第四步：对候选股扫描公告、新闻、龙虎榜，情绪初筛"
+    enforcement: "news.py 扫描；合规自检 news_has_lhb（龙虎榜必须纳入）"
+    implementation_status: "部分实现——当前有新闻/公告/事件，缺龙虎榜维度"
+    on_violation: "消息面缺失标注'无检索到消息'，龙虎榜缺失须上报待补"
+
+  - id: R25
+    category: 预测流程
+    priority: hard
+    title: "S5 LLM综合研判：出3只 + 买卖计划"
+    description: "第五步：DeepSeek基于候选+消息面+市场环境输出3只，且必须含买卖计划（买点/止损/卖出区间）"
+    enforcement: "judge.py 输出 targets 含 reason/risk/confidence/买卖计划；合规自检 has_sell_plan"
+    implementation_status: "部分实现——已出3只+逻辑/风险/置信，缺止损与卖出计划结构化输出"
+    on_violation: "无买卖计划=不完整，需补充"
+
+  - id: R26
+    category: 预测流程
+    priority: hard
+    title: "S6 回测验证（历史N日复盘命中率）"
+    description: "第六步：每次预测流程附带历史N日回测命中率，验证策略质量"
+    enforcement: "tracking 统计随报告输出；合规自检 tracking_count>0"
+    implementation_status: "部分实现——模拟盘命中率已自动统计；'历史N日滚动回测'尚未作为显式步骤纳入每日流程"
+    on_violation: "无命中率统计=不合格"

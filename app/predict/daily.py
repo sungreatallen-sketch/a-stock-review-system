@@ -89,13 +89,21 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
             } for p in top5]
             llm_result = judge(cands, news, market)
             targets = llm_result.get("targets") or []
+            # LLM 失败/空输出时回退：规则候选前3（保证 R10 3只不缺失）
+            if not targets:
+                targets = [{
+                    "code": p["ticker"], "name": p["name"], "reason": p.get("逻辑") or "规则打分排序",
+                    "risk": "LLM研判失败，基于规则候选回退", "confidence": "中",
+                    "参考买入价(收盘)": p.get("参考买入价(收盘)"), "量比": p.get("量比"),
+                    "板块": p.get("sector_name"), "评分明细": p.get("factors"),
+                } for p in top5[:3]]
             # 回填买入价
             price_map = {p["ticker"].split(".")[0]: p for p in top5}
             for tgt in targets:
                 code = tgt.get("code", "").split(".")[0]
                 src = price_map.get(code) or {}
-                tgt["参考买入价(收盘)"] = src.get("参考买入价(收盘)")
-                tgt["量比"] = src.get("量比")
+                tgt["参考买入价(收盘)"] = tgt.get("参考买入价(收盘)") or src.get("参考买入价(收盘)")
+                tgt["量比"] = tgt.get("量比") or src.get("量比")
                 tgt["评分明细"] = src.get("factors")
                 tgt["板块"] = src.get("sector_name")
         except Exception as e:

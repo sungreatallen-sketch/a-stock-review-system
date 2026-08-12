@@ -76,6 +76,23 @@ def _check_one(rid: str, ctx: dict) -> tuple:
     if rid == "R18": return bool(sources), f"来源可溯源（{len(sources)} 项）"
     if rid == "R19": return True, "规则变更先更新规则文件"
     if rid == "R20": return True, "本次已附合规自检"
+    # ---- 预测六步流程 ----
+    candidates = ctx.get("candidate_count", targets)  # 候选池数量（无则用标的数兜底）
+    news_lhb = ctx.get("news_has_lhb", False)
+    sell_plan = ctx.get("has_sell_plan", False)
+    if rid == "R21":
+        return (sectors > 0 and ctx.get("sector_window_ok", False)), \
+               f"板块筛选 {sectors} 条；{'✅ 7-10日口径' if ctx.get('sector_window_ok') else '❌ 当前用5日窗口，与规则7-10日口径不一致（待对齐）'}"
+    if rid == "R22":
+        return candidates > 0, f"候选池 {candidates} 只"
+    if rid == "R23":
+        return candidates > 0, f"规则打分已执行（候选 {candidates}）"
+    if rid == "R24":
+        return news_lhb, ("消息面含龙虎榜" if news_lhb else "❌ 消息面缺龙虎榜维度（待实现）")
+    if rid == "R25":
+        return sell_plan, ("含买卖计划" if sell_plan else "❌ 缺止损/卖出计划结构化输出（待实现）")
+    if rid == "R26":
+        return tracking > 0, f"命中率统计 {tracking} 笔（滚动回测待显式化）"
     return True, ""
 
 

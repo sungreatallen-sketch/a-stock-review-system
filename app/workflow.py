@@ -70,12 +70,19 @@ def _attach_compliance(report: dict) -> dict:
         tstats = tracking.get("stats") or {}
         recent = tstats.get("recent") or []
         has_close = any(r.get("ret_close") is not None for r in recent)
+        pred = report.get("prediction") or {}
+        targets = pred.get("targets") or []
+        has_sell_plan = any((t.get("止损") or t.get("卖出计划") or t.get("卖点")) for t in targets)
         ctx = {
             "mcp_available": _mcp_available(),
             "sectors_count": len(report.get("sector_rank") or []),
-            "prediction_targets": len(((report.get("prediction") or {}).get("targets") or [])),
+            "prediction_targets": len(targets),
+            "candidate_count": pred.get("candidate_count", len(targets)),
+            "sector_window_ok": False,  # 当前用5日资金流窗口，未对齐7-10日口径
             "tracking_count": tstats.get("count", 0),
             "has_close_price": has_close,
+            "news_has_lhb": bool(pred.get("news_has_lhb", False)),
+            "has_sell_plan": has_sell_plan,
             "report_complete": _report_ok(report),
             "data_sources": report.get("source") or [],
             "notes": [],

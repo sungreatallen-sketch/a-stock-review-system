@@ -44,6 +44,48 @@ def _report_ok(report: dict) -> bool:
     return True
 
 
+def _mcp_available() -> bool:
+    """轻量探测 MCP 代理端口是否可达（不调数据接口）"""
+    try:
+        from .mcp_client import discover_proxy
+        import socket
+        url, _ = discover_proxy("~/.workbuddy/logs")
+        if not url:
+            return False
+        port = int(url.rsplit(":", 1)[1].split("/")[0])
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(1.5)
+        s.connect(("127.0.0.1", port))
+        s.close()
+        return True
+    except Exception:
+        return False
+
+
+def _attach_compliance(report: dict) -> dict:
+    """按执行规则对报告做合规自检并挂到 report['compliance']"""
+    try:
+        from .rules import check_rules
+        tracking = report.get("tracking") or {}
+        tstats = tracking.get("stats") or {}
+        recent = tstats.get("recent") or []
+        has_close = any(r.get("ret_close") is not None for r in recent)
+        ctx = {
+            "mcp_available": _mcp_available(),
+            "sectors_count": len(report.get("sector_rank") or []),
+            "prediction_targets": len(((report.get("prediction") or {}).get("targets") or [])),
+            "tracking_count": tstats.get("count", 0),
+            "has_close_price": has_close,
+            "report_complete": _report_ok(report),
+            "data_sources": report.get("source") or [],
+            "notes": [],
+        }
+        report["compliance"] = check_rules(ctx)
+    except Exception as e:
+        report["compliance"] = {"version": "1.0", "items": [], "summary": {"status": f"自检失败:{str(e)[:80]}"}}
+    return report
+
+
 def run_review(include_prediction: bool = True, auto_track: bool = True, force: bool = False) -> dict:
     """执行完整复盘（采集→验证→报告），可选附标的预测
     auto_track: 先自动结算上期预测，再记录本期预测（模拟盘）
@@ -76,7 +118,7 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
                 existing["tracking"] = _build_tracking(tr, settle_result)
                 st.save_report(existing)
             existing["_settle"] = settle_result
-            return existing
+            return _attach_compliance(existing)
     except Exception as e:
         log.warning("报告复用检查失败，重新生成: %s", str(e)[:120])
 
@@ -106,6 +148,7 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
         # 推荐跟踪（昨日结算+累计命中率）无论预测是否成功都嵌入
         if auto_track:
             report["tracking"] = _build_tracking(tr, settle_result)
+    report = _attach_compliance(report)
     st.save_report(report)
     (p["reports"] / f"{report['date']}.html").write_text(render_html(report), encoding="utf-8")
     report["_settle"] = settle_result

@@ -189,6 +189,14 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
                                f"｜参考买入 {buy}\n   逻辑：{t.get('reason')}\n   ⚠️风险：{t.get('risk')}")
             summary += "\n" + "\n".join(t_lines)
         summary += "\n⚠️ 仅供研究参考，不构成投资建议。详细图表见完整 HTML 报告。"
+        comp = (report.get("compliance") or {}).get("summary") or {}
+        if comp.get("hard_fail"):
+            fails = [it for it in (report.get("compliance") or {}).get("items", [])
+                     if not it.get("ok") and it.get("priority") == "hard"]
+            lines = ["\n🧾 **合规自检**：存在红线违规，需关注"]
+            for it in fails[:3]:
+                lines.append(f"· ❌ {it['id']} {it['title']}：{it['detail']}")
+            summary += "\n".join(lines)
         card = {
             "config": {"wide_screen_mode": True},
             "header": {"title": {"tag": "plain_text", "content": f"A股复盘 + 标的预测 · {date_str}"},
@@ -244,6 +252,15 @@ def on_message(client: lark.Client, data: P2ImMessageReceiveV1) -> None:
     elif any(k in text for k in ("结算", "复盘结果", "命中率", "模拟盘")):
         threading.Thread(target=_settle_and_reply,
                          args=(client, msg.message_id), daemon=True).start()
+    elif any(k in text for k in ("规则", "约束", "合规")):
+        from ..rules import load_rules
+        rs = load_rules()
+        lines = ["**执行规则清单（v1.0，共 %d 条）**" % len(rs)]
+        for r in rs:
+            mark = "🔴" if r.get("priority") == "hard" else "🟡"
+            lines.append(f"{mark} {r['id']} {r['title']}")
+        lines.append("\n完整规则见 RULES.md / execution_rules.yaml（Mac 项目根目录）")
+        reply_text(client, msg.message_id, "\n".join(lines))
     elif any(k in text for k in ("预测", "标的")):
         threading.Thread(target=_predict_and_reply,
                          args=(client, msg.message_id), daemon=True).start()

@@ -1,0 +1,179 @@
+# ============================================================
+# A股复盘系统 · 执行规则（核心算法约束）
+# 本文件是规则唯一事实源：所有复盘/预测输出必须逐项遵守，
+# 每次执行末尾输出「合规自检」，违规项必须上报原因。
+# 规则变更：用户提出新要求 → 更新本文件 + RULES.md → git 提交。
+# ============================================================
+meta:
+  version: "1.0"
+  effective_date: "2026-08-12"
+  status: "权威规则（用户确认后生效）"
+  priority_policy: "hard=红线必须满足；soft=建议项，尽量满足"
+  self_check: "每次执行复盘/预测后，必须按本文件逐项自检并附在输出中"
+
+rules:
+  # ---------------- A. 数据源 ----------------
+  - id: R01
+    category: 数据源
+    priority: hard
+    title: "优先 ego 浏览器抓取"
+    description: "数据获取顺序：ego 浏览器抓公开网页优先（省钱）"
+    enforcement: "采集层先走 ego；日志记录实际使用来源"
+    on_violation: "报告标注数据来源为 MCP（如实说明为何未用 ego）"
+
+  - id: R02
+    category: 数据源
+    priority: hard
+    title: "MCP 依次兜底"
+    description: "ego 抓不到/不全 → 按数据类型依次调用 MCP：通达信→同舟→Wind"
+    enforcement: "采集层含兜底链；每个数据项记录最终来源"
+    on_violation: "标注'数据不可获取'，并说明已尝试哪些源"
+
+  - id: R03
+    category: 数据源
+    priority: hard
+    title: "MCP 不可用必须上报用户审查"
+    description: "MCP 连不上时禁止静默降级，必须提示用户审查数据源状态"
+    enforcement: "合规自检检测 MCP 连通性；不通过则输出 ❌ 并附上报提示"
+    on_violation: "卡片/报告显示 ⚠️ 数据源异常待审查"
+
+  - id: R04
+    category: 数据源
+    priority: hard
+    title: "数据必须标注来源"
+    description: "每个数据项注明来源（东财网页 / 通达信 / 同舟 / Wind）"
+    enforcement: "报告 source 字段 + 各数据项 sources 字段"
+    on_violation: "缺失来源视为不合格数据项"
+
+  - id: R05
+    category: 数据源
+    priority: hard
+    title: "关键数据双源交叉验证"
+    description: "指数/情绪等关键字段至少两个独立来源，容差内一致才输出"
+    enforcement: "validator 双源比对；不一致以权威源为准并注明"
+    on_violation: "标注'未交叉验证'及原因"
+
+  - id: R06
+    category: 数据源
+    priority: hard
+    title: "禁止编造数据"
+    description: "拿不到的数据必须标'数据不可获取'，绝不编造"
+    enforcement: "所有空值/缺失统一用显式标记"
+    on_violation: "视为严重违规"
+
+  # ---------------- B. 复盘输出 ----------------
+  - id: R07
+    category: 复盘输出
+    priority: hard
+    title: "结构化 JSON 输出"
+    description: "报告必须包含 date/market_index/emotion/sector_rank/capital_flow/source"
+    enforcement: "report_builder 结构校验"
+    on_violation: "补全字段后才允许输出"
+
+  - id: R08
+    category: 复盘输出
+    priority: hard
+    title: "板块排行必须有数据"
+    description: "行业+概念板块排行不得为空；空=不合格报告"
+    enforcement: "合规自检 sector_rank 非空；空则强制重生成/上报"
+    on_violation: "禁止复用/输出空板块报告"
+
+  - id: R09
+    category: 复盘输出
+    priority: hard
+    title: "一个 HTML 汇总（复盘+预测+跟踪）"
+    description: "输出单一 HTML，包含市场/情绪/板块/资金/昨日评估/今日预测；手机可访问"
+    enforcement: "HTML 渲染含全部区块；链接给 IP+.local+当前IP提示"
+    on_violation: "补全区块后重出 HTML"
+
+  # ---------------- C. 预测 ----------------
+  - id: R10
+    category: 预测
+    priority: hard
+    title: "次日 3 只标的（固定策略）"
+    description: "7-10日强势板块+资金活跃+剔除ST+量比过滤+消息面+LLM研判，输出3只"
+    enforcement: "predict 流程固定；targets 数量=3（不足须注明原因）"
+    on_violation: "注明原因，不静默改数量"
+
+  - id: R11
+    category: 预测
+    priority: hard
+    title: "同日预测锁定复用"
+    description: "同一交易日首次生成预测后，后续同天复用，保证'用户看到的=结算的'"
+    enforcement: "predict 前检查当日已记录预测，存在则直接复用"
+    on_violation: "重新生成时须提示覆盖旧预测"
+
+  # ---------------- D. 跟踪/评估（核心） ----------------
+  - id: R12
+    category: 跟踪评估
+    priority: hard
+    title: "昨日标的次日必须评估"
+    description: "每次执行复盘/预测，自动结算昨日标的（真实次日数据回填）"
+    enforcement: "workflow 先 settle_pending 再出报告"
+    on_violation: "输出 ❌ 昨日评估缺失，禁止复用旧报告"
+
+  - id: R13
+    category: 跟踪评估
+    priority: hard
+    title: "必须给出命中率评分"
+    description: "当日命中数、累计命中率、平均收益必须展示"
+    enforcement: "tracking.stats 含 win_rate/avg_ret/count，卡片与HTML展示"
+    on_violation: "缺失则视为报告不合格"
+
+  - id: R14
+    category: 跟踪评估
+    priority: hard
+    title: "开盘+收盘双口径评估"
+    description: "昨日标的次日同时展示开盘卖出收益与持有到收盘收益"
+    enforcement: "结算记录 sell(open)/ret + sell_close/ret_close，双口径展示"
+    on_violation: "只有单口径视为不完整"
+
+  - id: R15
+    category: 跟踪评估
+    priority: hard
+    title: "自动结算"
+    description: "工作日15:30定时结算 + 每次复盘/预测时自动结算"
+    enforcement: "launchd 定时任务 + workflow 自动调用"
+    on_violation: "手动触发补结算并提示"
+
+  # ---------------- E. 系统 ----------------
+  - id: R16
+    category: 系统
+    priority: hard
+    title: "报告完整才允许复用"
+    description: "同日报告复用前检查：板块有数据+预测有标的+昨日评估在 → 否则强制重生成"
+    enforcement: "_report_ok() 完整性检查"
+    on_violation: "强制重生成，不输出坏报告"
+
+  - id: R17
+    category: 系统
+    priority: hard
+    title: "消息去重防重复"
+    description: "同一消息只处理一次，防飞书重投导致重复输出/浪费 token"
+    enforcement: "消息级+回复级去重"
+    on_violation: "出现重复输出视为违规"
+
+  - id: R18
+    category: 系统
+    priority: hard
+    title: "诚实标注与可溯源"
+    description: "所有数字可溯源到来源；无法验证的明确说明"
+    enforcement: "来源字段+备注贯穿全链路"
+    on_violation: "不可溯源数据不得输出"
+
+  # ---------------- F. 协作 ----------------
+  - id: R19
+    category: 协作
+    priority: soft
+    title: "规则变更必须更新规则文件"
+    description: "用户新要求 → 先更新 execution_rules.yaml + RULES.md 并提交，再执行"
+    enforcement: "git 历史可查规则演进"
+    on_violation: "提示先落规则"
+
+  - id: R20
+    category: 协作
+    priority: soft
+    title: "合规自检附于每次输出"
+    description: "每次复盘/预测输出末尾附合规自检清单（✅/❌+原因）"
+    enforcement: "report['compliance'] 字段 + 卡片提示"
+    on_violation: "无自检视为未遵守规则"

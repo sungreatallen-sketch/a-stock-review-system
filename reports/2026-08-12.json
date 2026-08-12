@@ -400,13 +400,13 @@
     "status": "M3完整版",
     "date": "2026-08-12",
     "strategy": "板块5日资金流 + 个股强势 + 资金活跃 + 量比<2.0过滤 + 消息面 + LLM研判",
-    "market_view": "上证指数微涨0.32%，创业板涨1.49%，涨停92家无跌停，最高连板7板，市场情绪偏暖，结构性行情活跃。",
+    "market_view": "市场情绪偏暖，创业板涨1.49%，涨停92家无跌停，最高连板7，可积极关注强势板块标的。",
     "targets": [
       {
         "code": "688371.SH",
         "name": "菲沃泰",
-        "reason": "评分81.9居首，所属电子板块为强势板块，当日涨幅12.6%，量比1.4未放巨量；消息面有“AI+新材料”产业联盟利好。",
-        "risk": "无明确风险",
+        "reason": "评分81.9最高，所属强势板块电子，当日涨幅12.6%，量比1.4未放巨量，近5日有1条正面新闻。",
+        "risk": "科创板波动较大，短期涨幅较高存在回调压力。",
         "sentiment_score": 1,
         "confidence": "高",
         "参考买入价(收盘)": 32.2,
@@ -425,9 +425,9 @@
       {
         "code": "688182.SH",
         "name": "灿勤科技",
-        "reason": "消息面有5条利好，涵盖光通信龙头业绩超预期、通信设备强势拉升、商业航天反弹等热点；当日涨幅11.7%，量比1.6未放巨量。",
-        "risk": "无明确风险",
-        "sentiment_score": 4,
+        "reason": "近5日5条正面消息，通信板块强势，当日涨幅11.7%，量比1.6放量不明显，资金活跃度较高。",
+        "risk": "换手率仅2.93%，流动性一般，若次日高开需防承接不足。",
+        "sentiment_score": 5,
         "confidence": "高",
         "参考买入价(收盘)": 29.1,
         "量比": 1.62,
@@ -445,8 +445,8 @@
       {
         "code": "688115.SH",
         "name": "思林杰",
-        "reason": "评分75.2较高，所属机械设备板块强势，当日涨幅12.0%，量比1.5未放巨量；公告事件中性。",
-        "risk": "无明确风险",
+        "reason": "评分75.2，所属强势板块机械设备，当日涨幅12.0%，量比1.5，换手率4.23%，技术面较强。",
+        "risk": "消息面为中性，无明确催化剂，需依赖板块持续强势。",
         "sentiment_score": 0,
         "confidence": "中",
         "参考买入价(收盘)": 59.9,
@@ -488,7 +488,7 @@
     "东财跌停池API"
   ],
   "meta": {
-    "generated_at": "2026-08-12T15:57:07",
+    "generated_at": "2026-08-12T16:07:23",
     "说明": "所有数据均来自真实可追溯来源；标注'数据不可获取'表示该数据源确实无法取得，未做任何编造。",
     "来源网页": {
       "指数/涨停/跌停/炸板": "https://quote.eastmoney.com/ztb/",
@@ -543,6 +543,156 @@
           "status": "settled"
         }
       ]
+    }
+  },
+  "compliance": {
+    "version": "1.0",
+    "items": [
+      {
+        "id": "R01",
+        "title": "优先 ego 浏览器抓取",
+        "priority": "hard",
+        "ok": true,
+        "detail": "采集走 ego 优先"
+      },
+      {
+        "id": "R02",
+        "title": "MCP 依次兜底",
+        "priority": "hard",
+        "ok": true,
+        "detail": "MCP 兜底链已配置（通达信→同舟→Wind）"
+      },
+      {
+        "id": "R03",
+        "title": "MCP 不可用必须上报用户审查",
+        "priority": "hard",
+        "ok": true,
+        "detail": "MCP 可用"
+      },
+      {
+        "id": "R04",
+        "title": "数据必须标注来源",
+        "priority": "hard",
+        "ok": true,
+        "detail": "来源记录 7 项"
+      },
+      {
+        "id": "R05",
+        "title": "关键数据双源交叉验证",
+        "priority": "hard",
+        "ok": true,
+        "detail": "validator 双源比对已启用"
+      },
+      {
+        "id": "R06",
+        "title": "禁止编造数据",
+        "priority": "hard",
+        "ok": true,
+        "detail": "缺失数据统一标'数据不可获取'"
+      },
+      {
+        "id": "R07",
+        "title": "结构化 JSON 输出",
+        "priority": "hard",
+        "ok": true,
+        "detail": "JSON 结构固定"
+      },
+      {
+        "id": "R08",
+        "title": "板块排行必须有数据",
+        "priority": "hard",
+        "ok": true,
+        "detail": "板块行业+概念 20 条"
+      },
+      {
+        "id": "R09",
+        "title": "一个 HTML 汇总（复盘+预测+跟踪）",
+        "priority": "hard",
+        "ok": true,
+        "detail": "单一 HTML 汇总，多链接"
+      },
+      {
+        "id": "R10",
+        "title": "次日 3 只标的（固定策略）",
+        "priority": "hard",
+        "ok": true,
+        "detail": "预测标的 3 只"
+      },
+      {
+        "id": "R11",
+        "title": "同日预测锁定复用",
+        "priority": "hard",
+        "ok": true,
+        "detail": "同日预测锁定复用"
+      },
+      {
+        "id": "R12",
+        "title": "昨日标的次日必须评估",
+        "priority": "hard",
+        "ok": true,
+        "detail": "昨日评估 3 笔"
+      },
+      {
+        "id": "R13",
+        "title": "必须给出命中率评分",
+        "priority": "hard",
+        "ok": true,
+        "detail": "命中率统计已输出（3 笔）"
+      },
+      {
+        "id": "R14",
+        "title": "开盘+收盘双口径评估",
+        "priority": "hard",
+        "ok": true,
+        "detail": "开盘+收盘双口径"
+      },
+      {
+        "id": "R15",
+        "title": "自动结算",
+        "priority": "hard",
+        "ok": true,
+        "detail": "15:30 定时 + 复盘/预测时自动结算"
+      },
+      {
+        "id": "R16",
+        "title": "报告完整才允许复用",
+        "priority": "hard",
+        "ok": true,
+        "detail": "报告完整性检查"
+      },
+      {
+        "id": "R17",
+        "title": "消息去重防重复",
+        "priority": "hard",
+        "ok": true,
+        "detail": "消息级+回复级去重"
+      },
+      {
+        "id": "R18",
+        "title": "诚实标注与可溯源",
+        "priority": "hard",
+        "ok": true,
+        "detail": "来源可溯源（7 项）"
+      },
+      {
+        "id": "R19",
+        "title": "规则变更必须更新规则文件",
+        "priority": "soft",
+        "ok": true,
+        "detail": "规则变更先更新规则文件"
+      },
+      {
+        "id": "R20",
+        "title": "合规自检附于每次输出",
+        "priority": "soft",
+        "ok": true,
+        "detail": "本次已附合规自检"
+      }
+    ],
+    "summary": {
+      "total": 20,
+      "hard_fail": 0,
+      "status": "合规"
     }
   }
 }

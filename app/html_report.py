@@ -68,6 +68,11 @@ a{color:#5aa7ff;text-decoration:none}
 <div class="chart" id="emoChart"></div>
 </div>
 
+<!-- 推荐跟踪（昨日推荐复盘·醒目） -->
+<div class="card" id="trackCard"><h2>昨日标的复盘（推荐跟踪）</h2>
+<div id="trackBox"></div>
+</div>
+
 <!-- 板块 -->
 <div class="card"><h2>板块排行（行业 Top10）</h2>
 <div class="tbl-wrap"><table id="indTbl"></table></div>
@@ -89,11 +94,6 @@ a{color:#5aa7ff;text-decoration:none}
 <!-- 预测（M1 占位） -->
 <div class="card"><h2>次日标的预测</h2>
 <div id="predBox" class="sub"></div>
-</div>
-
-<!-- 推荐跟踪 -->
-<div class="card"><h2>推荐跟踪（模拟盘）</h2>
-<div id="trackBox"></div>
 </div>
 
 <!-- 来源 -->

@@ -162,6 +162,12 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
         )
         if pred.get("market_view"):
             summary += f"\n📌 市场判断：{pred['market_view']}"
+        # 顶部醒目：昨日推荐命中率摘要（问题4：保证用户第一眼看到）
+        tstats0 = (report.get("tracking") or {}).get("stats") or {}
+        if tstats0.get("count"):
+            summary += (f"\n📈 **昨日推荐复盘**：开盘命中率 {tstats0.get('win_rate')}%"
+                        f"（{tstats0.get('count')} 笔）｜开盘平均 {tstats0.get('avg_ret')}%"
+                        f"｜收盘平均 {tstats0.get('avg_ret_close')}%")
         tracking = report.get("tracking") or {}
         tstats = tracking.get("stats") or {}
         rows = (tstats.get("recent") or [])

@@ -26,6 +26,8 @@ from lark_oapi.api.im.v1 import (
     P2ImMessageReceiveV1,
     ReplyMessageRequest,
     ReplyMessageRequestBody,
+    CreateImageRequest,
+    CreateImageRequestBody,
 )
 
 from ..config import load_config, paths
@@ -154,6 +156,63 @@ def _read_tunnel_url() -> str:
 
 
 
+def _gen_report_images(html_path: str, out_dir: str) -> list:
+    """生成报告手机宽度长图并切片，返回 png 路径列表"""
+    import subprocess as _sp, os
+    from PIL import Image
+    os.makedirs(out_dir, exist_ok=True)
+    full = os.path.join(out_dir, "full.png")
+    node = "/Users/yage/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node"
+    script = "/Users/yage/Documents/我的预测系统/scripts/report_screenshot.mjs"
+    r = _sp.run([node, script, html_path, full], capture_output=True, text=True, timeout=120)
+    if not os.path.exists(full):
+        logger.error("报告截图生成失败: %s", (r.stdout or r.stderr)[:200])
+        return []
+    img = Image.open(full)
+    W, H = img.size
+    n = 3
+    step = H // n
+    paths = []
+    for i in range(n):
+        y = i * step
+        h = (H - y) if i == n - 1 else step
+        p_ = os.path.join(out_dir, f"sec_{i+1}.png")
+        img.crop((0, y, W, min(y + h, H))).save(p_, optimize=True)
+        paths.append(p_)
+    return paths
+
+
+def _send_report_images(client: lark.Client, message_id: str, html_path: str):
+    """把报告以图片形式直接发到飞书（不依赖局域网/IP/VPN）"""
+    try:
+        imgs = _gen_report_images(html_path, "/Users/yage/Documents/我的预测系统/output/report_img")
+        if not imgs:
+            return
+        keys = []
+        for p_ in imgs:
+            req = (CreateImageRequest.builder()
+                   .request_body(CreateImageRequestBody.builder().image_type("message").build())
+                   .file(open(p_, "rb")).build())
+            resp = client.im.v1.image.create(req)
+            if resp.success() and resp.data and resp.data.image_key:
+                keys.append(resp.data.image_key)
+            else:
+                logger.error("图片上传失败: code=%s msg=%s", resp.code, resp.msg)
+        if keys:
+            card = {
+                "config": {"wide_screen_mode": True},
+                "header": {"title": {"tag": "plain_text", "content": "📱 报告图片版（无需打开链接）"},
+                           "template": "blue"},
+                "elements": [{"tag": "img", "img_key": k,
+                              "alt": {"tag": "plain_text", "content": f"报告{i+1}"}}
+                             for i, k in enumerate(keys)],
+            }
+            reply_card(client, message_id, card)
+            logger.info("报告图片已发送 %d 张", len(keys))
+    except Exception as e:
+        logger.exception("报告图片发送失败(不影响主卡片)")
+
+
 def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "复盘"):
     """统一流程：复盘 + 标的预测 一体，回复合并卡片 + 完整 HTML 报告链接"""
     try:
@@ -240,6 +299,8 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
             ],
         }
         reply_card(client, message_id, card)
+        # 附加：报告图片直发飞书（解决 VPN/跨网段打不开 HTML 的问题）
+        _send_report_images(client, message_id, str(p["reports"] / f"{date_str}.html"))
         logger.info("完整报告(%s)已回复: %s", mode, date_str)
     except Exception as e:
         logger.exception("%s失败", mode)

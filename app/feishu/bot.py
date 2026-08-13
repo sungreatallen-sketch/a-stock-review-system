@@ -28,6 +28,8 @@ from lark_oapi.api.im.v1 import (
     ReplyMessageRequestBody,
     CreateImageRequest,
     CreateImageRequestBody,
+    CreateMessageRequest,
+    CreateMessageRequestBody,
 )
 
 from ..config import load_config, paths
@@ -182,19 +184,41 @@ def _gen_report_images(html_path: str, out_dir: str) -> list:
     return paths
 
 
-def _upload_feishu_image(path: str, image_type: str = "message") -> str:
-    """直接调用飞书图片上传 API（requests，已配 NO_PROXY 直连），返回 image_key"""
+def _feishu_token() -> str:
     import requests as _rq
     from ..config import load_config as _cfg
     cfg = _cfg()
-    app_id = cfg["feishu"].get("app_id", "")
-    app_secret = cfg["feishu"].get("app_secret", "")
     tok = _rq.post("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
-                   json={"app_id": app_id, "app_secret": app_secret}, timeout=15).json()
+                   json={"app_id": cfg["feishu"].get("app_id", ""),
+                         "app_secret": cfg["feishu"].get("app_secret", "")}, timeout=15).json()
     if tok.get("code") != 0:
         logger.error("飞书 token 获取失败: %s", tok)
         return ""
-    token = tok["tenant_access_token"]
+    return tok["tenant_access_token"]
+
+
+def _send_feishu_message(chat_id: str, card: dict, msg_type: str = "interactive") -> bool:
+    import requests as _rq
+    token = _feishu_token()
+    if not token:
+        return False
+    r = _rq.post("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
+                 headers={"Authorization": f"Bearer {token}"},
+                 json={"receive_id": chat_id, "msg_type": msg_type,
+                       "content": json.dumps(card, ensure_ascii=False)},
+                 timeout=15).json()
+    if r.get("code") != 0:
+        logger.error("飞书消息发送失败: %s", r)
+        return False
+    return True
+
+
+def _upload_feishu_image(path: str, image_type: str = "message") -> str:
+    """直接调用飞书图片上传 API（requests，已配 NO_PROXY 直连），返回 image_key"""
+    import requests as _rq
+    token = _feishu_token()
+    if not token:
+        return ""
     with open(path, "rb") as f:
         resp = _rq.post("https://open.feishu.cn/open-apis/im/v1/images",
                         headers={"Authorization": f"Bearer {token}"},
@@ -207,8 +231,8 @@ def _upload_feishu_image(path: str, image_type: str = "message") -> str:
     return ""
 
 
-def _send_report_images(client: lark.Client, message_id: str, html_path: str):
-    """把报告以图片形式直接发到飞书（不依赖局域网/IP/VPN）"""
+def _send_report_images(client: lark.Client, chat_id: str, html_path: str, message_id: str = None):
+    """把报告以图片形式直接发到飞书（新消息，不依赖局域网/IP/VPN）"""
     try:
         imgs = _gen_report_images(html_path, "/Users/yage/Documents/我的预测系统/output/report_img")
         if not imgs:
@@ -227,13 +251,16 @@ def _send_report_images(client: lark.Client, message_id: str, html_path: str):
                               "alt": {"tag": "plain_text", "content": f"报告{i+1}"}}
                              for i, k in enumerate(keys)],
             }
-            reply_card(client, message_id, card)
-            logger.info("报告图片已发送 %d 张", len(keys))
+            if chat_id:
+                _send_feishu_message(chat_id, card)
+            elif message_id:
+                reply_card(client, message_id, card)
+            logger.info("报告图片已发送 %d 张(新消息)", len(keys))
     except Exception as e:
         logger.exception("报告图片发送失败(不影响主卡片)")
 
 
-def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "复盘"):
+def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "复盘", chat_id: str = None):
     """统一流程：复盘 + 标的预测 一体，回复合并卡片 + 完整 HTML 报告链接"""
     try:
         reply_text(client, message_id, "收到！正在生成完整报告（收盘复盘 + 次日标的预测），约 20~40 秒…")
@@ -321,7 +348,7 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
         }
         reply_card(client, message_id, card)
         # 附加：报告图片直发飞书（解决 VPN/跨网段打不开 HTML 的问题）
-        _send_report_images(client, message_id, str(_paths()["reports"] / f"{date_str}.html"))
+        _send_report_images(client, chat_id, str(_paths()["reports"] / f"{date_str}.html"), message_id=message_id)
         logger.info("完整报告(%s)已回复: %s", mode, date_str)
     except Exception as e:
         logger.exception("%s失败", mode)
@@ -330,12 +357,12 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
 
 def _review_and_reply(client: lark.Client, message_id: str, chat_id: str):
     """复盘：完整报告（复盘+预测一体）"""
-    _full_report_and_reply(client, message_id, mode="复盘")
+    _full_report_and_reply(client, message_id, mode="复盘", chat_id=chat_id)
 
 
-def _predict_and_reply(client: lark.Client, message_id: str):
+def _predict_and_reply(client: lark.Client, message_id: str, chat_id: str = None):
     """预测：完整报告（复盘+预测一体）"""
-    _full_report_and_reply(client, message_id, mode="预测")
+    _full_report_and_reply(client, message_id, mode="预测", chat_id=chat_id)
 
 
 def on_message(client: lark.Client, data: P2ImMessageReceiveV1) -> None:
@@ -370,7 +397,7 @@ def on_message(client: lark.Client, data: P2ImMessageReceiveV1) -> None:
         reply_text(client, msg.message_id, "\n".join(lines))
     elif any(k in text for k in ("预测", "标的")):
         threading.Thread(target=_predict_and_reply,
-                         args=(client, msg.message_id), daemon=True).start()
+                         args=(client, msg.message_id, chat_id), daemon=True).start()
 
 
 def main() -> None:

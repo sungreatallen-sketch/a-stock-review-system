@@ -218,6 +218,7 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
     try:
         reply_text(client, message_id, "收到！正在生成完整报告（收盘复盘 + 次日标的预测），约 20~40 秒…")
         from ..workflow import run_review
+        from ..config import paths as _paths
         report = run_review(include_prediction=True)
         date_str = report["date"]
         links = report_link(date_str)
@@ -300,7 +301,7 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
         }
         reply_card(client, message_id, card)
         # 附加：报告图片直发飞书（解决 VPN/跨网段打不开 HTML 的问题）
-        _send_report_images(client, message_id, str(p["reports"] / f"{date_str}.html"))
+        _send_report_images(client, message_id, str(_paths()["reports"] / f"{date_str}.html"))
         logger.info("完整报告(%s)已回复: %s", mode, date_str)
     except Exception as e:
         logger.exception("%s失败", mode)

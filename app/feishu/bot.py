@@ -182,6 +182,31 @@ def _gen_report_images(html_path: str, out_dir: str) -> list:
     return paths
 
 
+def _upload_feishu_image(path: str, image_type: str = "message") -> str:
+    """直接调用飞书图片上传 API（requests，已配 NO_PROXY 直连），返回 image_key"""
+    import requests as _rq
+    from ..config import load_config as _cfg
+    cfg = _cfg()
+    app_id = cfg["feishu"].get("app_id", "")
+    app_secret = cfg["feishu"].get("app_secret", "")
+    tok = _rq.post("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+                   json={"app_id": app_id, "app_secret": app_secret}, timeout=15).json()
+    if tok.get("code") != 0:
+        logger.error("飞书 token 获取失败: %s", tok)
+        return ""
+    token = tok["tenant_access_token"]
+    with open(path, "rb") as f:
+        resp = _rq.post("https://open.feishu.cn/open-apis/im/v1/images",
+                        headers={"Authorization": f"Bearer {token}"},
+                        data={"image_type": image_type},
+                        files={"image": (path.split("/")[-1], f, "image/png")},
+                        timeout=30).json()
+    if resp.get("code") == 0 and resp.get("data", {}).get("image_key"):
+        return resp["data"]["image_key"]
+    logger.error("图片上传失败: %s", resp)
+    return ""
+
+
 def _send_report_images(client: lark.Client, message_id: str, html_path: str):
     """把报告以图片形式直接发到飞书（不依赖局域网/IP/VPN）"""
     try:
@@ -190,14 +215,9 @@ def _send_report_images(client: lark.Client, message_id: str, html_path: str):
             return
         keys = []
         for p_ in imgs:
-            req = (CreateImageRequest.builder()
-                   .request_body(CreateImageRequestBody.builder().image_type("message").build())
-                   .file(open(p_, "rb")).build())
-            resp = client.im.v1.image.create(req)
-            if resp.success() and resp.data and resp.data.image_key:
-                keys.append(resp.data.image_key)
-            else:
-                logger.error("图片上传失败: code=%s msg=%s", resp.code, resp.msg)
+            k = _upload_feishu_image(p_)
+            if k:
+                keys.append(k)
         if keys:
             card = {
                 "config": {"wide_screen_mode": True},

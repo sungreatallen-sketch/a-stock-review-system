@@ -99,6 +99,11 @@ class Tracker:
             saved += 1
         conn.commit()
         conn.close()
+        if saved:
+            try:
+                self.export_history()
+            except Exception as e:
+                log.warning("数据积累文件更新失败: %s", str(e)[:120])
         return {"date": pred_date, "settled": saved, "missing_open": missing}
 
     def settle_pending(self, cached, today: str = None) -> dict:
@@ -174,6 +179,72 @@ class Tracker:
         if mcp_failed:
             res["data_source"] = "ego浏览器兜底"
         return res
+
+    # ---------- 数据积累文件（后台分析用，前端不展示累计） ----------
+    def export_history(self) -> dict:
+        """把全部已结算推荐导出到 data/recommendation_history.json（积累+分析）
+        含：全部记录、按日汇总、累计统计、分股统计、按月统计"""
+        import statistics as _st
+        conn = self._conn()
+        rows = conn.execute(
+            "SELECT date, target_code, target_name, buy_price, sell_price, ret, sell_close, ret_close, status "
+            "FROM prediction_results WHERE status='settled' ORDER BY date, id").fetchall()
+        conn.close()
+        records = [{"date": r[0], "code": r[1], "name": r[2], "buy": r[3], "sell": r[4],
+                    "ret": r[5], "sell_close": r[6], "ret_close": r[7]} for r in rows]
+        # 按日汇总
+        daily = {}
+        for r in records:
+            daily.setdefault(r["date"], []).append(r)
+        daily_summary = []
+        for d in sorted(daily):
+            rs = daily[d]
+            rets = [x["ret"] for x in rs]
+            daily_summary.append({
+                "date": d, "count": len(rs), "hit": sum(1 for x in rets if x > 0),
+                "win_rate": round(sum(1 for x in rets if x > 0) / len(rets) * 100, 1),
+                "avg_ret": round(_st.mean(rets), 2),
+                "targets": [{"name": x["name"], "code": x["code"], "buy": x["buy"],
+                             "sell_close": x["sell_close"], "ret": x["ret"]} for x in rs],
+            })
+        # 累计统计
+        rets_all = [r["ret"] for r in records]
+        cumulative = {"count": len(rets_all),
+                      "win_rate": round(sum(1 for x in rets_all if x > 0) / len(rets_all) * 100, 1) if rets_all else None,
+                      "avg_ret": round(_st.mean(rets_all), 2) if rets_all else None,
+                      "median_ret": round(_st.median(rets_all), 2) if rets_all else None,
+                      "best": round(max(rets_all), 2) if rets_all else None,
+                      "worst": round(min(rets_all), 2) if rets_all else None}
+        # 分股统计
+        by_stock = {}
+        for r in records:
+            b = by_stock.setdefault(r["code"], {"name": r["name"], "count": 0, "rets": []})
+            b["count"] += 1
+            b["rets"].append(r["ret"])
+        for code, b in by_stock.items():
+            rs = b.pop("rets")
+            b["win_rate"] = round(sum(1 for x in rs if x > 0) / len(rs) * 100, 1)
+            b["avg_ret"] = round(_st.mean(rs), 2)
+        # 按月统计
+        by_month = {}
+        for r in records:
+            m = r["date"][:7]
+            by_month.setdefault(m, []).append(r["ret"])
+        month_summary = {m: {"count": len(v), "win_rate": round(sum(1 for x in v if x > 0) / len(v) * 100, 1),
+                             "avg_ret": round(_st.mean(v), 2)} for m, v in sorted(by_month.items())}
+        out = {
+            "meta": {"version": "1.0", "updated_at": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
+                     "note": "后台数据积累文件：全部已结算推荐记录与分析；前端报告只展示最近一天，不展示本文件累计"},
+            "cumulative": cumulative,
+            "by_month": month_summary,
+            "by_stock": by_stock,
+            "daily": daily_summary,
+            "records": records,
+        }
+        fp = self.db_path.parent / "recommendation_history.json"
+        fp.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+        log.info("推荐历史数据积累已更新: %d 条 -> %s", len(records), fp)
+        return out
 
     # ---------- 统计 ----------
     def stats(self, days: int = 30) -> dict:

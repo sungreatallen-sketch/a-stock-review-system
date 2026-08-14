@@ -1,0 +1,184 @@
+{
+  "meta": {
+    "version": "1.0",
+    "updated_at": "2026-08-14T09:10:50",
+    "note": "后台数据积累文件：全部已结算推荐记录与分析；前端报告只展示最近一天，不展示本文件累计"
+  },
+  "cumulative": {
+    "count": 6,
+    "win_rate": 50.0,
+    "avg_ret": 2.19,
+    "median_ret": -0.71,
+    "best": 10.01,
+    "worst": -2.87
+  },
+  "by_month": {
+    "2026-08": {
+      "count": 6,
+      "win_rate": 50.0,
+      "avg_ret": 2.19
+    }
+  },
+  "by_stock": {
+    "688449": {
+      "name": "联芸科技",
+      "count": 1,
+      "win_rate": 0.0,
+      "avg_ret": -1.85
+    },
+    "688190": {
+      "name": "云路股份",
+      "count": 1,
+      "win_rate": 100.0,
+      "avg_ret": 0.44
+    },
+    "603897": {
+      "name": "长城科技",
+      "count": 1,
+      "win_rate": 100.0,
+      "avg_ret": 9.99
+    },
+    "600379": {
+      "name": "宝光股份",
+      "count": 1,
+      "win_rate": 0.0,
+      "avg_ret": -2.57
+    },
+    "000593": {
+      "name": "德龙汇能",
+      "count": 1,
+      "win_rate": 100.0,
+      "avg_ret": 10.01
+    },
+    "300359": {
+      "name": "全通教育",
+      "count": 1,
+      "win_rate": 0.0,
+      "avg_ret": -2.87
+    }
+  },
+  "daily": [
+    {
+      "date": "2026-08-11",
+      "count": 3,
+      "hit": 2,
+      "win_rate": 66.7,
+      "avg_ret": 2.86,
+      "targets": [
+        {
+          "name": "联芸科技",
+          "code": "688449",
+          "buy": 63.63,
+          "sell_close": 62.45,
+          "ret": -1.85
+        },
+        {
+          "name": "云路股份",
+          "code": "688190",
+          "buy": 79.45,
+          "sell_close": 79.8,
+          "ret": 0.44
+        },
+        {
+          "name": "长城科技",
+          "code": "603897",
+          "buy": 29.14,
+          "sell_close": 32.05,
+          "ret": 9.99
+        }
+      ]
+    },
+    {
+      "date": "2026-08-12",
+      "count": 3,
+      "hit": 1,
+      "win_rate": 33.3,
+      "avg_ret": 1.52,
+      "targets": [
+        {
+          "name": "宝光股份",
+          "code": "600379",
+          "buy": 14.8,
+          "sell_close": 14.42,
+          "ret": -2.57
+        },
+        {
+          "name": "德龙汇能",
+          "code": "000593",
+          "buy": 25.27,
+          "sell_close": 27.8,
+          "ret": 10.01
+        },
+        {
+          "name": "全通教育",
+          "code": "300359",
+          "buy": 4.53,
+          "sell_close": 4.4,
+          "ret": -2.87
+        }
+      ]
+    }
+  ],
+  "records": [
+    {
+      "date": "2026-08-11",
+      "code": "688449",
+      "name": "联芸科技",
+      "buy": 63.63,
+      "sell": 62.45,
+      "ret": -1.85,
+      "sell_close": 62.45,
+      "ret_close": -1.85
+    },
+    {
+      "date": "2026-08-11",
+      "code": "688190",
+      "name": "云路股份",
+      "buy": 79.45,
+      "sell": 79.8,
+      "ret": 0.44,
+      "sell_close": 79.8,
+      "ret_close": 0.44
+    },
+    {
+      "date": "2026-08-11",
+      "code": "603897",
+      "name": "长城科技",
+      "buy": 29.14,
+      "sell": 32.05,
+      "ret": 9.99,
+      "sell_close": 32.05,
+      "ret_close": 9.99
+    },
+    {
+      "date": "2026-08-12",
+      "code": "600379",
+      "name": "宝光股份",
+      "buy": 14.8,
+      "sell": 14.42,
+      "ret": -2.57,
+      "sell_close": 14.42,
+      "ret_close": -2.57
+    },
+    {
+      "date": "2026-08-12",
+      "code": "000593",
+      "name": "德龙汇能",
+      "buy": 25.27,
+      "sell": 27.8,
+      "ret": 10.01,
+      "sell_close": 27.8,
+      "ret_close": 10.01
+    },
+    {
+      "date": "2026-08-12",
+      "code": "300359",
+      "name": "全通教育",
+      "buy": 4.53,
+      "sell": 4.4,
+      "ret": -2.87,
+      "sell_close": 4.4,
+      "ret_close": -2.87
+    }
+  ]
+}

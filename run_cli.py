@@ -52,8 +52,8 @@ def main():
                     help="指数5日涨跌幅过滤阈值（如 0 表示仅指数5日为正才交易）")
     bt.add_argument("--no-vol", action="store_true", help="关闭量比过滤（默认开启量比<2.0）")
     bt.add_argument("-v", "--verbose", action="store_true")
-    tk = sub.add_parser("track", help="模拟盘跟踪: record/auto/settle/stats")
-    tk.add_argument("action", choices=["record", "auto", "settle", "stats"])
+    tk = sub.add_parser("track", help="模拟盘跟踪: record/auto/settle/stats/history")
+    tk.add_argument("action", choices=["record", "auto", "settle", "stats", "history"])
     tk.add_argument("--date", default=None)
     tk.add_argument("--days", type=int, default=30)
     pd = sub.add_parser("predict", help="生成今日 Top3 标的预测")
@@ -114,6 +114,10 @@ def main():
             print(f"结算结果: {json.dumps(res, ensure_ascii=False)}")
             if res.get("settled"):
                 print(json.dumps(tr.stats(), ensure_ascii=False, indent=2))
+        elif args.action == "history":
+            h = tr.export_history()
+            print(json.dumps({k: v for k, v in h.items() if k != "records"}, ensure_ascii=False, indent=2)[:1200])
+            print(f"累计 {h['cumulative']['count']} 条 -> data/recommendation_history.json")
         elif args.action == "stats":
             print(json.dumps(tr.stats(args.days), ensure_ascii=False, indent=2))
     elif args.cmd == "predict":

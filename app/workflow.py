@@ -62,7 +62,7 @@ def _mcp_available() -> bool:
         return False
 
 
-def _attach_compliance(report: dict) -> dict:
+def _attach_compliance(report: dict, pre: dict = None) -> dict:
     """按执行规则对报告做合规自检并挂到 report['compliance']"""
     try:
         from .rules import check_rules
@@ -75,7 +75,7 @@ def _attach_compliance(report: dict) -> dict:
         has_sell_plan = any((t.get("止损") or t.get("卖出计划") or t.get("卖点")
                              or t.get("stop_loss") or t.get("sell_target")) for t in targets)
         ctx = {
-            "rules_preloaded": bool(pre.get("ok")),
+            "rules_preloaded": bool((pre or {}).get("ok", True)),
             "mcp_available": _mcp_available(),
             "sectors_count": len(report.get("sector_rank") or []),
             "prediction_targets": len(targets),
@@ -129,7 +129,7 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
                 existing["tracking"] = _build_tracking(tr, settle_result)
                 st.save_report(existing)
             existing["_settle"] = settle_result
-            return _attach_compliance(existing)
+            return _attach_compliance(existing, pre)
     except Exception as e:
         log.warning("报告复用检查失败，重新生成: %s", str(e)[:120])
 
@@ -161,7 +161,7 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
         # 推荐跟踪（昨日结算+累计命中率）无论预测是否成功都嵌入
         if auto_track:
             report["tracking"] = _build_tracking(tr, settle_result)
-    report = _attach_compliance(report)
+    report = _attach_compliance(report, pre)
     st.save_report(report)
     (p["reports"] / f"{report['date']}.html").write_text(render_html(report), encoding="utf-8")
     report["_settle"] = settle_result

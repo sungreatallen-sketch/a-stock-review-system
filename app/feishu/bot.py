@@ -264,9 +264,16 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
     """统一流程：复盘 + 标的预测 一体，回复合并卡片 + 完整 HTML 报告链接"""
     try:
         reply_text(client, message_id, "收到！正在生成完整报告（收盘复盘 + 次日标的预测），约 20~40 秒…")
-        from ..workflow import run_review
-        from ..config import paths as _paths
-        report = run_review(include_prediction=True)
+        from ..config import load_config, paths as _paths
+        _cfg = load_config()
+        _rsi_enabled = (_cfg.get("rsi") or {}).get("enabled", False)
+        if _rsi_enabled:
+            from ..rsi_app import handle_command
+            from ..workflow import run_review as _legacy_review
+            report = handle_command(mode=mode, report_func=_legacy_review, include_prediction=True)
+        else:
+            from ..workflow import run_review
+            report = run_review(include_prediction=True)
         date_str = report["date"]
         links = report_link(date_str)
         primary_url = links["public"] or links["ip"]

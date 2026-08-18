@@ -33,3 +33,9 @@ feishu:
 
 backtest:
   window_days: 90
+
+# RSI Framework 接入开关
+# true:  飞书 → RSI Framework → AShareAgent → 现有 workflow
+# false: 飞书 → 现有 workflow（Legacy Flow，完全不变）
+rsi:
+  enabled: false

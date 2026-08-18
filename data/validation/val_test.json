@@ -1,0 +1,149 @@
+{
+  "report_id": "val_test",
+  "created_at": "2026-08-18",
+  "candidate_id": "cand_test123",
+  "parent_version": "v1.0",
+  "candidate_version": "v1.0-test",
+  "walk_forward_windows": [
+    {
+      "window_id": 1,
+      "train_period": {
+        "start": "2026-05-01",
+        "end": "2026-06-09",
+        "days": 40
+      },
+      "test_period": {
+        "start": "2026-06-10",
+        "end": "2026-06-25",
+        "days": 15
+      },
+      "candidate": {
+        "label": "candidate",
+        "stats": {
+          "count": 12,
+          "win_rate": 66.7,
+          "avg_ret": 3.2,
+          "median_ret": 2.5,
+          "best_ret": 10.0,
+          "worst_ret": -2.0,
+          "max_drawdown": 4.0
+        },
+        "trade_count": 12
+      },
+      "production": {
+        "label": "production",
+        "stats": {
+          "count": 10,
+          "win_rate": 50.0,
+          "avg_ret": 1.8,
+          "median_ret": 1.0,
+          "best_ret": 8.0,
+          "worst_ret": -3.0,
+          "max_drawdown": 6.0
+        },
+        "trade_count": 10
+      }
+    },
+    {
+      "window_id": 2,
+      "train_period": {
+        "start": "2026-05-16",
+        "end": "2026-06-24",
+        "days": 40
+      },
+      "test_period": {
+        "start": "2026-06-25",
+        "end": "2026-07-10",
+        "days": 15
+      },
+      "candidate": {
+        "label": "candidate",
+        "stats": {
+          "count": 15,
+          "win_rate": 73.3,
+          "avg_ret": 4.1,
+          "median_ret": 3.0,
+          "best_ret": 12.0,
+          "worst_ret": -1.5,
+          "max_drawdown": 3.0
+        },
+        "trade_count": 15
+      },
+      "production": {
+        "label": "production",
+        "stats": {
+          "count": 13,
+          "win_rate": 53.8,
+          "avg_ret": 2.0,
+          "median_ret": 1.5,
+          "best_ret": 7.0,
+          "worst_ret": -4.0,
+          "max_drawdown": 7.0
+        },
+        "trade_count": 13
+      }
+    }
+  ],
+  "oos_aggregate": {
+    "count": 27,
+    "win_rate": 66.7,
+    "avg_ret": 3.7,
+    "median_ret": 4.1,
+    "best_ret": 12.0,
+    "worst_ret": -2.0,
+    "window_count": 2
+  },
+  "production_aggregate": {
+    "count": 23,
+    "win_rate": 47.8,
+    "avg_ret": 1.91,
+    "median_ret": 2.0,
+    "best_ret": 8.0,
+    "worst_ret": -4.0,
+    "window_count": 2
+  },
+  "statistical_tests": {
+    "sample_adequate": true,
+    "candidate_trades": 27,
+    "production_trades": 23,
+    "min_oos_trades": 5,
+    "candidate_win_rate_ci": [
+      0.509,
+      0.795
+    ],
+    "production_win_rate_ci": [
+      0.318,
+      0.642
+    ],
+    "win_rate_p_value": 0.1772,
+    "win_rate_significant": false,
+    "excess_return": 1.79,
+    "return_improvement": true,
+    "significance_level": 0.1
+  },
+  "robustness": {
+    "consistent_windows": 2,
+    "total_windows": 2,
+    "consistency_rate": 100.0,
+    "degradation": "improvement",
+    "candidate_win_rates": [
+      66.7,
+      73.3
+    ],
+    "production_win_rates": [
+      50.0,
+      53.8
+    ],
+    "candidate_returns": [
+      3.2,
+      4.1
+    ],
+    "production_returns": [
+      1.8,
+      2.0
+    ]
+  },
+  "decision": "validated",
+  "confidence": "medium",
+  "reasoning": "测试验证通过"
+}

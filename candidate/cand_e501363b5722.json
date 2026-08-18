@@ -1,0 +1,25 @@
+{
+  "candidate_id": "cand_e501363b5722",
+  "created_at": "2026-08-18T11:20:55",
+  "parent_strategy": "ashare_scoring_v1",
+  "parent_version": "v1.0",
+  "version": "v1.0-candidate-reduce-hot-market",
+  "hypothesis": "涨停家数>=80时命中率仅 33.3%，情绪过热，减少推荐数量",
+  "parameters": {
+    "MAX_VOL_RATIO": 2.0,
+    "TOP_PRE": 10,
+    "top_n": 3,
+    "index_filter": null,
+    "high_zt_reduce_top_n": 2
+  },
+  "source_insights": [
+    "ins_0b85034a47c8"
+  ],
+  "status": "candidate",
+  "backtest_result": null,
+  "benchmark_result": null,
+  "metadata": {
+    "generator": "AShareCandidateGenerator",
+    "discovery_ratio": 0.6
+  }
+}

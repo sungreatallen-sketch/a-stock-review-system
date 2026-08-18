@@ -57,7 +57,7 @@ def get_framework() -> RSIAgentFramework:
 
         # 初始化 Evaluator
         try:
-            from .rsi_evaluator import ASHRSEvaluator
+            from .rsi_evaluator import AShareEvaluator
             log.info("RSI Evaluator 初始化完成")
         except Exception as e:
             log.warning("RSI Evaluator 初始化失败（不影响主流程）: %s", e)
@@ -129,6 +129,7 @@ def handle_command(mode: str, report_func, **kwargs) -> Any:
                         break
             log.info("RSI Task 完成: status=%s, date=%s",
                      result.status.value, output.get("date", "?") if isinstance(output, dict) else "?")
+            _trigger_feedback(output)
             return output
         else:
             log.error("RSI Task 失败: status=%s, actions=%d",
@@ -140,3 +141,37 @@ def handle_command(mode: str, report_func, **kwargs) -> Any:
     except Exception as e:
         log.exception("RSI 执行异常，回退到 Legacy Flow: %s", e)
         return report_func(**kwargs)
+
+
+def _trigger_feedback(report: Any) -> None:
+    """settle 后触发 Feedback 闭环：Evaluation -> Memory
+
+    从 report 中提取 settle 信息，调用 rsi_feedback.settle_feedback()
+    不阻塞主流程，失败仅记录日志。
+    """
+    if not isinstance(report, dict):
+        return
+    try:
+        from .config import paths
+        p = paths()
+
+        # 提取本次 settle 的预测日期
+        settle = report.get("_settle") or {}
+        pred_date = settle.get("date", "")
+        if not pred_date:
+            tracking = report.get("tracking") or {}
+            recent = (tracking.get("stats") or {}).get("recent") or []
+            if recent:
+                pred_date = recent[0].get("date", "")
+
+        if not pred_date:
+            log.debug("Feedback: 无 settle 日期，跳过")
+            return
+
+        from .rsi_feedback import settle_feedback
+        result = settle_feedback(pred_date, p["data"])
+        if result.get("stored", 0) > 0:
+            log.info("Feedback 闭环: %s -> evaluated=%d stored=%d",
+                     pred_date, result["evaluated"], result["stored"])
+    except Exception as e:
+        log.warning("Feedback 闭环失败（不影响主流程）: %s", e)

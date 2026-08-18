@@ -52,21 +52,70 @@ def classify_news_sentiment(text: str) -> str:
 
 
 def safe_json(text: str) -> dict:
-    """解析模型返回的 JSON（容错：去掉围栏与前后噪声）"""
+    """解析模型返回的 JSON（容错：去掉围栏/推理文本/前后噪声）"""
     if not text:
         return {}
     t = text.strip()
+
+    # 1. 去掉 markdown 围栏
     if t.startswith("```"):
         t = t.strip("`")
         if t.startswith("json"):
             t = t[4:]
+        t = t.strip()
+
+    # 2. 直接解析
     try:
         return json.loads(t)
     except Exception:
-        # 截取第一个 { 到最后一个 }
-        try:
-            i, j = t.find("{"), t.rfind("}")
+        pass
+
+    # 3. 截取第一个 { 到最后一个 }
+    try:
+        i, j = t.find("{"), t.rfind("}")
+        if i >= 0 and j > i:
             return json.loads(t[i:j + 1])
-        except Exception:
-            log.error("模型返回非 JSON: %s", text[:200])
-            return {}
+    except Exception:
+        pass
+
+    # 4. 修复常见 JSON 问题：尾部逗号
+    try:
+        import re
+        cleaned = re.sub(r',\s*([}\]])', r'\1', t)
+        i, j = cleaned.find("{"), cleaned.rfind("}")
+        if i >= 0 and j > i:
+            return json.loads(cleaned[i:j + 1])
+    except Exception:
+        pass
+
+    # 5. 尝试提取最大的完整 JSON 对象（跳过推理文本中的碎片）
+    try:
+        import re
+        # 找所有 {...} 块，取最大的
+        depth = 0
+        start = -1
+        candidates = []
+        for idx, ch in enumerate(t):
+            if ch == '{':
+                if depth == 0:
+                    start = idx
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0 and start >= 0:
+                    candidates.append(t[start:idx + 1])
+                    start = -1
+        # 按长度排序，尝试最长的
+        candidates.sort(key=len, reverse=True)
+        for c in candidates:
+            try:
+                result = json.loads(c)
+                if isinstance(result, dict) and len(result) >= 1:
+                    return result
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    log.error("模型返回非 JSON: %s", text[:200])
+    return {}

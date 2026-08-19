@@ -38,6 +38,10 @@ class Strategy:
         pre = self.base_score_fn(pool, top_n=TOP_PRE)
         kept = []
         for pick in pre:
+            # 涨停股过滤：涨停板无法买入，实盘无意义
+            if pick.get("limit_status") == "涨停":
+                log.info("涨停过滤: %s(%s) 当日涨停，无法买入", pick.get("name"), pick.get("ticker"))
+                continue
             resp = self.kline_lookup(pick["ticker"], day_t1)
             vr = compute_vol_ratio(resp, day_t)
             if vr is None:

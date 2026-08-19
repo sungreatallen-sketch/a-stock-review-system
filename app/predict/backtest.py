@@ -96,6 +96,9 @@ class Backtest:
                 continue
             day_trades = []
             for pick in top:
+                # 涨停股跳过：涨停板无法买入，回测不应计入
+                if pick.get("limit_status") == "涨停":
+                    continue
                 bs = self._buy_sell(pick["ticker"], t, t1)
                 if not bs or bs["sealed"]:
                     continue

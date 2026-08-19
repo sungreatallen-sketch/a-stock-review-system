@@ -87,7 +87,7 @@ def score_stock(stock: dict, n_sectors: int = 8) -> dict:
     score += t; f["换手率"] = round(t, 1)
     s = _sector_score(stock.get("sector_rank"), n_sectors)
     score += s; f["板块"] = round(s, 1)
-    e = -5.0 if stock.get("limit_status") == "涨停" else 5.0
+    e = -50.0 if stock.get("limit_status") == "涨停" else 5.0  # 涨停无法买入，大幅扣分
     score += e; f["情绪"] = e
     q = _quality_penalty(stock)
     score -= q; f["质量扣分"] = -round(q, 1)

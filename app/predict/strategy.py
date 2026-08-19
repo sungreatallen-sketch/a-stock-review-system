@@ -7,6 +7,7 @@ log = logging.getLogger("strategy")
 
 MAX_VOL_RATIO = 2.0   # 量比超过该值视为"放巨量"，剔除（回测最优参数）
 TOP_PRE = 10          # 先取基础打分前 N 做量比检查
+STRATEGY_VERSION = "v1.1"   # v1.0→v1.1 唯一变化：过滤不可交易的涨停股票
 
 
 def _kline_points(resp):
@@ -33,14 +34,24 @@ class Strategy:
         self.mcp = mcp
         self.base_score_fn = base_score_fn
         self.kline_lookup = kline_lookup   # fn(ticker, end_date) -> kline resp
+        self.filtered = []                 # 被过滤的股票（保留供 RSI 研究）
 
     def select(self, pool: dict, day_t: str, day_t1: str, top_n: int = 3) -> list:
         pre = self.base_score_fn(pool, top_n=TOP_PRE)
         kept = []
+        self.filtered = []   # 每次 select 重置
         for pick in pre:
-            # 涨停股过滤：涨停板无法买入，实盘无意义
+            # 涨停股过滤：涨停板无法买入（交易可执行性硬约束，非策略优化）
             if pick.get("limit_status") == "涨停":
                 log.info("涨停过滤: %s(%s) 当日涨停，无法买入", pick.get("name"), pick.get("ticker"))
+                self.filtered.append({
+                    "code": (pick.get("ticker") or "").split(".")[0],
+                    "name": pick.get("name"),
+                    "score": pick.get("score"),
+                    "limit_status": pick.get("limit_status"),
+                    "filter_reason": "limit_up_untradable",
+                    "strategy_version": STRATEGY_VERSION,
+                })
                 continue
             resp = self.kline_lookup(pick["ticker"], day_t1)
             vr = compute_vol_ratio(resp, day_t)

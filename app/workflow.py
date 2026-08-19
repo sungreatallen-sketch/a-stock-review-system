@@ -148,6 +148,8 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
                 "status": "M3完整版",
                 "date": pred["date"],
                 "strategy": pred["strategy"],
+                "strategy_version": pred.get("strategy_version", "v1.0"),
+                "filtered_out": pred.get("filtered_out", []),
                 "market_view": pred.get("market_view"),
                 "targets": pred["targets"],
                 "top_sectors": pred["top_sectors"],

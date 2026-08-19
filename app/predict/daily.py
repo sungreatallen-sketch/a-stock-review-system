@@ -6,7 +6,7 @@ import logging
 
 from .candidate_pool import CandidatePool
 from .scoring import score_pool
-from .strategy import Strategy, compute_vol_ratio
+from .strategy import Strategy, compute_vol_ratio, STRATEGY_VERSION
 from .backtest import Backtest
 from .news import NewsScanner
 from .judge import judge
@@ -137,6 +137,8 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
     return {
         "date": t,
         "strategy": "7-10日强势板块 + 个股强势 + 资金活跃 + 量比<2.0过滤 + 消息面 + LLM研判",
+        "strategy_version": STRATEGY_VERSION,
+        "filtered_out": strat.filtered,
         "sector_window": pool["meta"].get("sector_window"),
         "market_view": (llm_result or {}).get("market_view"),
         "targets": targets,

@@ -364,6 +364,16 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
 
 def _review_and_reply(client: lark.Client, message_id: str, chat_id: str):
     """复盘：完整报告（复盘+预测一体）"""
+    from ..utils import is_trading_day, get_latest_trading_day
+    from datetime import date
+    
+    # 交易日检查
+    today = date.today()
+    if not is_trading_day(today):
+        latest_trade = get_latest_trading_day(today)
+        warning_msg = f"⚠️ 今天不是交易日（{today.strftime('%Y-%m-%d %A')}）" + "\n" + f"最近交易日是 {latest_trade}，将使用该日数据。" + "\n" + "如果需要强制复盘，请发送'复盘+force'。"
+        reply_text(client, message_id, warning_msg)
+    
     _full_report_and_reply(client, message_id, mode="复盘", chat_id=chat_id)
 
 

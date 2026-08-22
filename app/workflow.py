@@ -101,6 +101,22 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
     同日已生成报告且完整时直接复用（避免重复采集/预测浪费 token）；不完整则重生成"""
     from datetime import date
     from .rules import preload_rules
+    from .utils import is_trading_day, get_latest_trading_day
+    
+    # 交易日检查
+    today_date = date.today()
+    if not is_trading_day(today_date):
+        latest_trade = get_latest_trading_day(today_date)
+        log.warning("今天 %s 不是交易日，使用最近交易日: %s", today_date, latest_trade)
+        # 如果强制运行，使用最近交易日；否则返回提示
+        if not force:
+            return {
+                "date": str(latest_trade),
+                "error": "非交易日",
+                "message": f"今天不是交易日，最近交易日是 {latest_trade}",
+                "latest_trade_date": str(latest_trade),
+            }
+    
     pre = preload_rules()          # R30：运行前预读执行规则
     p = paths()
     st = Storage(p["data"], p["reports"])
@@ -133,7 +149,11 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
     except Exception as e:
         log.warning("报告复用检查失败，重新生成: %s", str(e)[:120])
 
-    report = build_report(Collector().collect())
+    collector_result = Collector().collect()
+    report = build_report(collector_result)
+    trade_date = report.get("date")  # 使用 collector 找到的交易日
+    log.info("collector 找到交易日: %s", trade_date)
+    
     if include_prediction:
         from .predict.track import Tracker
         tr = Tracker(p["data"])
@@ -141,7 +161,7 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
             if auto_track:
                 settle_result = tr.settle_pending(cached)
             from .predict.daily import predict as predict_today
-            pred = predict_today(cached)
+            pred = predict_today(cached, target_date=trade_date)  # 传入 collector 找到的日期
             if auto_track:
                 tr.record_prediction(pred)
             report["prediction"] = {

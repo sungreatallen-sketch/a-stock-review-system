@@ -43,6 +43,9 @@ def _is_valid(stock: dict) -> bool:
     cr = stock.get("change_ratio")
     if cr is None or abs(cr) > MAX_CHANGE:
         return False
+    # 涨停股过滤：涨停板无法买入（交易可执行性硬约束）
+    if cr is not None and cr >= 9.9:
+        return False
     amt = stock.get("amount") or 0
     if amt < MIN_AMOUNT:
         return False

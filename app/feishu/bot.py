@@ -371,7 +371,7 @@ def _review_and_reply(client: lark.Client, message_id: str, chat_id: str):
     today = date.today()
     if not is_trading_day(today):
         latest_trade = get_latest_trading_day(today)
-        warning_msg = f"⚠️ 今天不是交易日（{today.strftime('%Y-%m-%d %A')}）" + "\n" + f"最近交易日是 {latest_trade}，将使用该日数据。" + "\n" + "如果需要强制复盘，请发送'复盘+force'。"
+        warning_msg = f"⚠️ 今天不是交易日（{today.strftime('%Y-%m-%d %A')}）" + "\n" + f"最近交易日是 {latest_trade}，将使用该日数据。" + "\n" + "正在生成报告..."
         reply_text(client, message_id, warning_msg)
     
     _full_report_and_reply(client, message_id, mode="复盘", chat_id=chat_id)

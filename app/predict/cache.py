@@ -1,8 +1,11 @@
 """MCP 调用结果缓存（SQLite），回测多次调用避免重复请求"""
 import hashlib
+import logging
 import json
 import sqlite3
 from pathlib import Path
+
+log = logging.getLogger("cache")
 
 
 class MCPCache:
@@ -29,7 +32,16 @@ class MCPCache:
         row = conn.execute("SELECT result FROM mcp_cache WHERE key=?",
                            (self._key(name, args),)).fetchone()
         conn.close()
-        return json.loads(row[0]) if row else None
+        if not row:
+            return None
+        try:
+            data = json.loads(row[0])
+            # 只缓存 dict 类型；字符串等异常数据视为无效，返回 None 重新拉取
+            if not isinstance(data, dict):
+                return None
+            return data
+        except Exception:
+            return None
 
     def set(self, name: str, args: dict, result):
         conn = sqlite3.connect(self.db_path)
@@ -57,5 +69,22 @@ class CachedMcp:
         payload = resp.get("structured")
         if payload is None:
             payload = parse_mcp_json(resp)
-        self.cache.set(name, args, payload)
+        # 归一化：字符串尝试解析为 JSON dict；失败返回空 dict（带警告）
+        if isinstance(payload, str):
+            import json as _json
+            try:
+                parsed = _json.loads(payload)
+                if isinstance(parsed, dict):
+                    payload = parsed
+                else:
+                    log.warning("MCP %s 返回非 dict JSON: %s", name, type(parsed).__name__)
+                    payload = {}
+            except Exception:
+                log.warning("MCP %s 返回字符串且非 JSON，返回空 dict: %.100s", name, payload)
+                payload = {}
+        elif not isinstance(payload, dict):
+            log.warning("MCP %s 返回非 dict 类型: %s", name, type(payload).__name__)
+            payload = {}
+        if payload:
+            self.cache.set(name, args, payload)
         return payload

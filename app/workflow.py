@@ -108,14 +108,7 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
     if not is_trading_day(today_date):
         latest_trade = get_latest_trading_day(today_date)
         log.warning("今天 %s 不是交易日，使用最近交易日: %s", today_date, latest_trade)
-        # 如果强制运行，使用最近交易日；否则返回提示
-        if not force:
-            return {
-                "date": str(latest_trade),
-                "error": "非交易日",
-                "message": f"今天不是交易日，最近交易日是 {latest_trade}",
-                "latest_trade_date": str(latest_trade),
-            }
+        # 非交易日时使用最近交易日继续执行（不返回提示）
     
     pre = preload_rules()          # R30：运行前预读执行规则
     p = paths()
@@ -130,7 +123,12 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
         cached = _get_cached_mcp()
         resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
                            {"ticker": INDEX_TICKER, "market": "index", "end_date": today, "limit": 2})
-        pts = sorted({x["time"] for x in ((resp or {}).get("data") or {}).get("points") or []})
+        # 类型检查：resp 可能是字符串（MCP 返回异常）
+        if isinstance(resp, dict):
+            pts = sorted({x["time"] for x in ((resp or {}).get("data") or {}).get("points") or []})
+        else:
+            log.warning("MCP 返回非 dict 类型: %s", type(resp).__name__)
+            pts = []
         latest_day = pts[-1] if pts else today
         existing = st.load_report(latest_day)
         gen_day = ((existing or {}).get("meta") or {}).get("generated_at", "")[:10]

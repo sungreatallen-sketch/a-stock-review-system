@@ -64,6 +64,11 @@ def judge(candidates: list, news: dict, market: dict = None,
     parsed = safe_json(text)
     if not parsed:
         log.error("研判解析失败，原始输出: %s", text[:1000])
+        try:
+            with open('/tmp/llm_debug.json', 'w', encoding='utf-8') as df:
+                df.write(text)
+        except Exception:
+            pass
         return {"market_view": "模型输出解析失败", "targets": [], "raw": text, "raw_llm_output": text}
     parsed["raw"] = text
     parsed["raw_llm_output"] = text  # 存储完整原始输出
@@ -72,6 +77,10 @@ def judge(candidates: list, news: dict, market: dict = None,
     valid_codes = {c["ticker"] for c in candidates}
     targets = []
     for t in parsed.get("targets") or []:
+        # 类型检查：跳过非 dict 元素（LLM 可能返回字符串）
+        if not isinstance(t, dict):
+            log.warning("LLM 返回的 target 非 dict 类型，跳过: %s", type(t).__name__)
+            continue
         code = (t.get("code") or "").split(".")[0]
         if code and any(c["ticker"].split(".")[0] == code for c in candidates):
             targets.append(t)

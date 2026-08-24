@@ -143,8 +143,12 @@ class Tracker:
             return {"date": pred_date, "note": f"次日({today}前)无交易日数据，尚未到结算时间"}
         sell_date = pts[idx + 1]
         # 若 sell_date 是未来日期，说明今天还没到
+        # 如果 sell_date 是未来日期，说明今天还没到
         if sell_date > today:
             return {"date": pred_date, "sell_date": sell_date, "note": "尚未到次日，暂不结算"}
+        # 如果 sell_date 等于 pred_date，说明数据异常
+        if sell_date == pred_date:
+            return {"date": pred_date, "note": "预测日与结算日相同，数据异常"}
 
         # 拉取各标的次日开盘价（MCP 优先，失败自动切 ego 浏览器兜底）
         targets = json.loads(row[1]).get("targets") or []
@@ -155,6 +159,11 @@ class Tracker:
             try:
                 resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
                                    {"ticker": code, "market": "a_stock", "end_date": sell_date, "limit": 6})
+                # 类型检查：resp 可能是字符串（MCP 返回异常）
+                if not isinstance(resp, dict):
+                    log.warning("MCP 返回非 dict 类型: %s", type(resp).__name__)
+                    mcp_failed = True
+                    continue
                 pt = next((x for x in ((resp or {}).get("data") or {}).get("points") or []
                            if x.get("time") == sell_date), None)
                 if pt and pt.get("open"):

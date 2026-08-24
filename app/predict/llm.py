@@ -91,7 +91,6 @@ def safe_json(text: str) -> dict:
     # 5. 尝试提取最大的完整 JSON 对象（跳过推理文本中的碎片）
     try:
         import re
-        # 找所有 {...} 块，取最大的
         depth = 0
         start = -1
         candidates = []
@@ -114,6 +113,45 @@ def safe_json(text: str) -> dict:
                     return result
             except Exception:
                 continue
+    except Exception:
+        pass
+
+    # 6. 尝试修复单引号（Python 风格 -> JSON 风格）
+    try:
+        import re
+        # 替换单引号为双引号，但保留字符串内的单引号
+        fixed = t
+        # 先尝试简单替换
+        fixed = fixed.replace("'", '"')
+        i, j = fixed.find("{"), fixed.rfind("}")
+        if i >= 0 and j > i:
+            result = json.loads(fixed[i:j + 1])
+            if isinstance(result, dict) and len(result) >= 1:
+                return result
+    except Exception:
+        pass
+
+    # 7. 尝试用 ast.literal_eval 解析 Python 字面量
+    try:
+        import ast
+        # 找到 { 开始的位置
+        i = t.find("{")
+        if i >= 0:
+            # 找到匹配的 }
+            depth = 0
+            for j in range(i, len(t)):
+                if t[j] == '{':
+                    depth += 1
+                elif t[j] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        break
+            else:
+                j = len(t) - 1
+            # 尝试解析
+            result = ast.literal_eval(t[i:j + 1])
+            if isinstance(result, dict) and len(result) >= 1:
+                return result
     except Exception:
         pass
 

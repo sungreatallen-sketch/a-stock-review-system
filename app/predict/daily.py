@@ -152,6 +152,7 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
         "news_has_lhb": bool(lhb_map),
         "top_sectors": pool["meta"]["top_sectors"],
         "candidate_count": len(pool["candidates"]),
+        "raw_llm_output": (llm_result or {}).get("raw_llm_output", ""),
     }
 
 

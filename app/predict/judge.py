@@ -56,11 +56,18 @@ def judge(candidates: list, news: dict, market: dict = None,
     """调用 DeepSeek 研判，返回 {market_view, targets:[...], raw}"""
     user = build_user(candidates, news, market)
     text = deepseek_chat(SYSTEM, user, json_mode=True, max_tokens=max_tokens, effort=effort)
+    
+    # 记录原始输出（用于调试）
+    raw_preview = text[:500] if text else "(空)"
+    log.info("LLM 原始输出前500字符: %s", raw_preview)
+    
     parsed = safe_json(text)
     if not parsed:
-        log.error("研判解析失败")
-        return {"market_view": "模型输出解析失败", "targets": [], "raw": text}
+        log.error("研判解析失败，原始输出: %s", text[:1000])
+        return {"market_view": "模型输出解析失败", "targets": [], "raw": text, "raw_llm_output": text}
     parsed["raw"] = text
+    parsed["raw_llm_output"] = text  # 存储完整原始输出
+    
     # 只保留候选池内存在的标的（防模型幻觉）
     valid_codes = {c["ticker"] for c in candidates}
     targets = []

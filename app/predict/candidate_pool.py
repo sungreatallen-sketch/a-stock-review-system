@@ -13,23 +13,36 @@ PER_SECTOR_N = 6          # 每板块取前 N
 TOP_AMOUNT_N = 25         # 全市场成交额前 N
 
 
+def _safe_float(v):
+    """安全转 float：字符串/None/异常统一返回 None"""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    try:
+        return float(str(v).replace(",", "").replace("%", "").strip())
+    except Exception:
+        return None
+
+
 def _clean_rank_row(r: dict) -> dict:
+    # 数值字段统一转 float，避免 MCP 返回字符串导致下游崩溃
     return {
         "ticker": r.get("ticker"),
         "name": r.get("security_name"),
         "trade_date": r.get("trade_date"),
-        "close": r.get("close"),
-        "change_ratio": r.get("change_ratio"),
-        "amount": r.get("amount"),
-        "turnover_rate": r.get("turnover_rate"),
-        "market_cap": r.get("market_cap"),
-        "pe_ttm": r.get("pe_ttm"),
-        "pb": r.get("pb"),
+        "close": _safe_float(r.get("close")),
+        "change_ratio": _safe_float(r.get("change_ratio")),
+        "amount": _safe_float(r.get("amount")),
+        "turnover_rate": _safe_float(r.get("turnover_rate")),
+        "market_cap": _safe_float(r.get("market_cap")),
+        "pe_ttm": _safe_float(r.get("pe_ttm")),
+        "pb": _safe_float(r.get("pb")),
         "industry": r.get("industry"),
         "board": r.get("board"),
         "limit_status": r.get("limit_status"),
-        "prev_close": r.get("prev_close"),
-        "volume": r.get("volume"),
+        "prev_close": _safe_float(r.get("prev_close")),
+        "volume": _safe_float(r.get("volume")),
     }
 
 
@@ -40,14 +53,14 @@ def _is_valid(stock: dict) -> bool:
         return False
     if ticker.startswith("920") or stock.get("board") == "北证":
         return False
-    cr = stock.get("change_ratio")
+    cr = _safe_float(stock.get("change_ratio"))
     if cr is None or abs(cr) > MAX_CHANGE:
         return False
     # 涨停股过滤：涨停板无法买入（交易可执行性硬约束）
-    if cr is not None and cr >= 9.9:
+    if cr >= 9.9:
         return False
-    amt = stock.get("amount") or 0
-    if amt < MIN_AMOUNT:
+    amt = _safe_float(stock.get("amount"))
+    if amt is None or amt < MIN_AMOUNT:
         return False
     return True
 

@@ -97,9 +97,15 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
             targets = llm_result.get("targets") or []
             # LLM 失败/空输出时回退：规则候选前3（保证 R10 3只不缺失）
             if not targets:
+                # 降级 market_view：用实际市场环境生成中性判断，不暴露内部错误
+                mv = llm_result.get("market_view") or ""
+                if mv in ("模型输出解析失败", "Invalid JSON", "") or mv.startswith("{"):
+                    mv = _fallback_market_view(market)
+                llm_result = llm_result or {}
+                llm_result["market_view"] = mv
                 targets = [{
                     "code": p["ticker"], "name": p["name"], "reason": p.get("逻辑") or "规则打分排序",
-                    "risk": "LLM研判失败，基于规则候选回退", "confidence": "中",
+                    "risk": "规则策略推荐（低吸强势板块龙头，控制仓位）", "confidence": "中",
                     "参考买入价(收盘)": p.get("参考买入价(收盘)"), "量比": p.get("量比"),
                     "板块": p.get("sector_name"), "评分明细": p.get("factors"),
                 } for p in top5[:3]]
@@ -130,8 +136,10 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
                     tgt.setdefault("hold", "T+1（次日开盘卖出）")
         except Exception as e:
             log.exception("LLM 研判失败，回退规则结果")
+            llm_result = {"market_view": _fallback_market_view(market), "targets": []}
             targets = [{"code": p["ticker"], "name": p["name"], "reason": p.get("逻辑"),
-                        "risk": "无", "confidence": "中", "参考买入价(收盘)": p.get("参考买入价(收盘)"),
+                        "risk": "规则策略推荐（低吸强势板块龙头，控制仓位）", "confidence": "中",
+                        "参考买入价(收盘)": p.get("参考买入价(收盘)"),
                         "量比": p.get("量比")} for p in top5[:3]]
 
     return {
@@ -154,6 +162,29 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
         "candidate_count": len(pool["candidates"]),
         "raw_llm_output": (llm_result or {}).get("raw_llm_output", ""),
     }
+
+
+def _fallback_market_view(market: dict) -> str:
+    """LLM 失败时，用实际市场环境生成中性市场判断（不编造）"""
+    try:
+        sh = market.get("上证指数")
+        cyb = market.get("创业板指")
+        zt = market.get("涨停")
+        dt = market.get("跌停")
+        parts = []
+        if sh is not None:
+            parts.append(f"上证指数 {sh}")
+        if cyb is not None:
+            parts.append(f"创业板指 {cyb}")
+        if zt is not None:
+            parts.append(f"涨停 {zt} 家")
+        if dt is not None:
+            parts.append(f"跌停 {dt} 家")
+        if parts:
+            return "市场概况：" + "，".join(parts) + "（规则策略推荐，仅供参考）"
+    except Exception:
+        pass
+    return "市场数据获取中，建议关注强势板块龙头（规则策略推荐，仅供参考）"
 
 
 def _build_logic(pick: dict, vol_ratio) -> str:

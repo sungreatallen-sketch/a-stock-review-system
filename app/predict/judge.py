@@ -52,16 +52,25 @@ def build_user(candidates: list, news: dict, market: dict = None) -> str:
 
 
 def judge(candidates: list, news: dict, market: dict = None,
-          effort: str = "high", max_tokens: int = 5000) -> dict:
-    """调用 DeepSeek 研判，返回 {market_view, targets:[...], raw}"""
+          effort: str = "high", max_tokens: int = 8000) -> dict:
+    """调用 DeepSeek 研判，返回 {market_view, targets:[...], raw}
+    max_tokens=8000：避免长 JSON 输出被截断；解析失败自动重试一次"""
     user = build_user(candidates, news, market)
-    text = deepseek_chat(SYSTEM, user, json_mode=True, max_tokens=max_tokens, effort=effort)
     
-    # 记录原始输出（用于调试）
+    # 第一次调用
+    text = deepseek_chat(SYSTEM, user, json_mode=True, max_tokens=max_tokens, effort=effort)
     raw_preview = text[:500] if text else "(空)"
     log.info("LLM 原始输出前500字符: %s", raw_preview)
-    
     parsed = safe_json(text)
+    
+    # 解析失败：降低推理强度重试一次（减少推理 token 占用，给输出留空间）
+    if not parsed:
+        log.warning("研判解析失败，降低推理强度重试一次")
+        text = deepseek_chat(SYSTEM, user, json_mode=True, max_tokens=max_tokens, effort="medium")
+        raw_preview = text[:500] if text else "(空)"
+        log.info("重试 LLM 原始输出前500字符: %s", raw_preview)
+        parsed = safe_json(text)
+    
     if not parsed:
         log.error("研判解析失败，原始输出: %s", text[:1000])
         try:

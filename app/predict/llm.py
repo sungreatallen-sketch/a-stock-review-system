@@ -155,5 +155,40 @@ def safe_json(text: str) -> dict:
     except Exception:
         pass
 
+    # 8. 截断 JSON 恢复：整体不完整时，尝试提取各字段（market_view/targets）
+    try:
+        import re
+        out = {}
+        # 提取 market_view
+        m = re.search(r'"market_view"\s*:\s*"([^"]*)"', t)
+        if m:
+            out["market_view"] = m.group(1)
+        # 提取每个完整的 target 对象 {...}
+        targets = []
+        depth = 0
+        start = -1
+        for idx, ch in enumerate(t):
+            if ch == '{':
+                if depth == 0:
+                    start = idx
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0 and start >= 0:
+                    seg = t[start:idx + 1]
+                    try:
+                        obj = json.loads(seg)
+                        if isinstance(obj, dict) and "code" in obj:
+                            targets.append(obj)
+                    except Exception:
+                        pass
+                    start = -1
+        if targets:
+            out["targets"] = targets
+        if out:
+            return out
+    except Exception:
+        pass
+
     log.error("模型返回非 JSON: %s", text[:200])
     return {}

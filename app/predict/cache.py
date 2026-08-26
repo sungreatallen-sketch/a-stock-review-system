@@ -1,6 +1,7 @@
 """MCP 调用结果缓存（SQLite），回测多次调用避免重复请求"""
 import hashlib
 import logging
+from datetime import datetime
 import json
 import sqlite3
 from pathlib import Path
@@ -29,10 +30,17 @@ class MCPCache:
 
     def get(self, name: str, args: dict):
         conn = sqlite3.connect(self.db_path)
-        row = conn.execute("SELECT result FROM mcp_cache WHERE key=?",
+        row = conn.execute("SELECT result, created_at FROM mcp_cache WHERE key=?",
                            (self._key(name, args),)).fetchone()
         conn.close()
         if not row:
+            return None
+        # TTL：当天缓存的命中，跨天自动过期重拉（防止旧数据永久命中导致交易日误判）
+        try:
+            created = datetime.fromisoformat(row[1])
+            if created.date() != datetime.now().date():
+                return None
+        except Exception:
             return None
         try:
             data = json.loads(row[0])

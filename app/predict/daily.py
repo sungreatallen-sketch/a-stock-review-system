@@ -51,6 +51,14 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
     end = target_date or str(date.today())
     trading = bt.trading_days(end, 2)
     t = trading[-1]
+    # R11：实际交易日 t 已有预测则直接复用（防止数据源滞后导致覆盖用户已看到的预测）
+    # 注意：不能用传入的 target_date 检查，必须用 trading_days 实际算出的 t
+    from .track import Tracker
+    from ..config import paths as _paths
+    _existing = Tracker(_paths()["data"]).get_prediction(t)
+    if _existing:
+        log.info("R11: %s 已有预测，直接复用（不覆盖）", t)
+        return _existing
     pool = CandidatePool(cached).build(t)
     kline_lookup = _kline_lookup_factory(cached)
     strat = Strategy(cached, score_pool, kline_lookup)

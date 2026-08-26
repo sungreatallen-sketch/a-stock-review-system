@@ -1,22 +1,22 @@
 {
   "meta": {
     "version": "1.0",
-    "updated_at": "2026-08-26T22:07:39",
+    "updated_at": "2026-08-26T22:16:33",
     "note": "后台数据积累文件：全部已结算推荐记录与分析；前端报告只展示最近一天，不展示本文件累计"
   },
   "cumulative": {
     "count": 24,
-    "win_rate": 79.2,
-    "avg_ret": 4.0,
-    "median_ret": 3.64,
+    "win_rate": 66.7,
+    "avg_ret": 2.85,
+    "median_ret": 2.5,
     "best": 10.01,
     "worst": -6.94
   },
   "by_month": {
     "2026-08": {
       "count": 24,
-      "win_rate": 79.2,
-      "avg_ret": 4.0
+      "win_rate": 66.7,
+      "avg_ret": 2.85
     }
   },
   "by_stock": {
@@ -94,9 +94,9 @@
     },
     "688710": {
       "name": "益诺思",
-      "count": 1,
-      "win_rate": 100.0,
-      "avg_ret": 9.92
+      "count": 2,
+      "win_rate": 50.0,
+      "avg_ret": 2.92
     },
     "301060": {
       "name": "兰卫医学",
@@ -146,23 +146,17 @@
       "win_rate": 100.0,
       "avg_ret": 2.63
     },
-    "300601": {
-      "name": "康泰生物",
+    "688238": {
+      "name": "和元生物",
       "count": 1,
-      "win_rate": 100.0,
-      "avg_ret": 4.25
+      "win_rate": 0.0,
+      "avg_ret": -2.19
     },
-    "300122": {
-      "name": "智飞生物",
+    "301201": {
+      "name": "诚达药业",
       "count": 1,
-      "win_rate": 100.0,
-      "avg_ret": 8.67
-    },
-    "301207": {
-      "name": "华兰疫苗",
-      "count": 1,
-      "win_rate": 100.0,
-      "avg_ret": 3.03
+      "win_rate": 0.0,
+      "avg_ret": -5.21
     }
   },
   "daily": [
@@ -379,30 +373,30 @@
     {
       "date": "2026-08-25",
       "count": 3,
-      "hit": 3,
-      "win_rate": 100.0,
-      "avg_ret": 5.32,
+      "hit": 0,
+      "win_rate": 0.0,
+      "avg_ret": -3.83,
       "targets": [
         {
-          "name": "康泰生物",
-          "code": "300601",
-          "buy": 12.95,
-          "sell_close": 13.5,
-          "ret": 4.25
+          "name": "和元生物",
+          "code": "688238",
+          "buy": 7.3,
+          "sell_close": 7.14,
+          "ret": -2.19
         },
         {
-          "name": "智飞生物",
-          "code": "300122",
-          "buy": 13.04,
-          "sell_close": 14.17,
-          "ret": 8.67
+          "name": "益诺思",
+          "code": "688710",
+          "buy": 97.97,
+          "sell_close": 93.97,
+          "ret": -4.08
         },
         {
-          "name": "华兰疫苗",
-          "code": "301207",
-          "buy": 17.47,
-          "sell_close": 18.0,
-          "ret": 3.03
+          "name": "诚达药业",
+          "code": "301201",
+          "buy": 37.45,
+          "sell_close": 35.5,
+          "ret": -5.21
         }
       ]
     }
@@ -620,33 +614,33 @@
     },
     {
       "date": "2026-08-25",
-      "code": "300601",
-      "name": "康泰生物",
-      "buy": 12.95,
-      "sell": 13.5,
-      "ret": 4.25,
-      "sell_close": 13.5,
-      "ret_close": 4.25
+      "code": "688238",
+      "name": "和元生物",
+      "buy": 7.3,
+      "sell": 7.14,
+      "ret": -2.19,
+      "sell_close": 7.14,
+      "ret_close": -2.19
     },
     {
       "date": "2026-08-25",
-      "code": "300122",
-      "name": "智飞生物",
-      "buy": 13.04,
-      "sell": 14.17,
-      "ret": 8.67,
-      "sell_close": 14.17,
-      "ret_close": 8.67
+      "code": "688710",
+      "name": "益诺思",
+      "buy": 97.97,
+      "sell": 93.97,
+      "ret": -4.08,
+      "sell_close": 93.97,
+      "ret_close": -4.08
     },
     {
       "date": "2026-08-25",
-      "code": "301207",
-      "name": "华兰疫苗",
-      "buy": 17.47,
-      "sell": 18.0,
-      "ret": 3.03,
-      "sell_close": 18.0,
-      "ret_close": 3.03
+      "code": "301201",
+      "name": "诚达药业",
+      "buy": 37.45,
+      "sell": 35.5,
+      "ret": -5.21,
+      "sell_close": 35.5,
+      "ret_close": -5.21
     }
   ]
 }

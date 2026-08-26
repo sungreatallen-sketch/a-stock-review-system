@@ -69,6 +69,19 @@ class Tracker:
         conn.close()
         return row
 
+    def get_prediction(self, pred_date: str):
+        """按日期读取已保存的预测（R11 同日预测锁定复用用）
+        返回 dict（含 date/targets 等），无记录返回 None"""
+        conn = self._conn()
+        row = conn.execute("SELECT targets FROM predictions WHERE date=?", (pred_date,)).fetchone()
+        conn.close()
+        if not row:
+            return None
+        try:
+            return json.loads(row[0])
+        except Exception:
+            return None
+
     # ---------- 结算 ----------
     def settle(self, pred_date: str, open_prices: dict = None, close_prices: dict = None) -> dict:
         """pred_date: 预测日 T；按【昨收买→今收卖】收盘-收盘口径评估（用户确认 v1.4）
@@ -125,10 +138,15 @@ class Tracker:
         today = today or str(date.today())
         pts = []
         try:
+            # 注意：MCP 接口 start_date+end_date 会漏掉 end_date 当天（左闭右开）
+            # 必须只用 end_date+limit 查完整交易日列表，再在 Python 侧按需过滤
             resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
                                {"ticker": INDEX_TICKER, "market": "index",
-                                "start_date": pred_date, "end_date": today, "limit": 12})
+                                "end_date": today, "limit": 12})
             pts = sorted({p["time"] for p in ((resp or {}).get("data") or {}).get("points") or []})
+            # 只保留 pred_date 及之后的交易日（避免 pred_date 太旧不在列表）
+            if pred_date in pts:
+                pts = pts[pts.index(pred_date):]
         except Exception as e:
             log.warning("MCP 交易日历失败，切 ego 兜底: %s", str(e)[:100])
         if not pts:

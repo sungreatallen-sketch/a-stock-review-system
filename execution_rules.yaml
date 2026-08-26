@@ -104,8 +104,16 @@ rules:
     priority: hard
     title: "同日预测锁定复用"
     description: "同一交易日首次生成预测后，后续同天复用，保证'用户看到的=结算的'"
-    enforcement: "predict 前检查当日已记录预测，存在则直接复用"
-    on_violation: "重新生成时须提示覆盖旧预测"
+    enforcement: "predict 前必须 Tracker.get_prediction(trade_date) 检查，已有则直接复用，绝不重新生成/覆盖"
+    on_violation: "重新生成时须提示覆盖旧预测；若被覆盖视为违规（I42）"
+
+  - id: R31
+    category: 数据查询
+    priority: hard
+    title: "K线查询禁止 start_date+end_date 同传"
+    description: "MCP get_kline_series 的 start_date+end_date 为左闭右开，会漏掉 end_date 当天，导致结算误判'无次日数据'"
+    enforcement: "一律用 {end_date, limit} 查询；需要起始过滤在 Python 侧按 p['time']>=start 处理"
+    on_violation: "start_date+end_date 同传视为违规（I41）"
 
   # ---------------- D. 跟踪/评估（核心） ----------------
   - id: R12

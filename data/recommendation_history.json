@@ -1,22 +1,22 @@
 {
   "meta": {
     "version": "1.0",
-    "updated_at": "2026-08-21T15:17:13",
+    "updated_at": "2026-08-26T22:07:39",
     "note": "后台数据积累文件：全部已结算推荐记录与分析；前端报告只展示最近一天，不展示本文件累计"
   },
   "cumulative": {
-    "count": 15,
-    "win_rate": 80.0,
-    "avg_ret": 4.4,
-    "median_ret": 6.06,
+    "count": 24,
+    "win_rate": 79.2,
+    "avg_ret": 4.0,
+    "median_ret": 3.64,
     "best": 10.01,
-    "worst": -2.87
+    "worst": -6.94
   },
   "by_month": {
     "2026-08": {
-      "count": 15,
-      "win_rate": 80.0,
-      "avg_ret": 4.4
+      "count": 24,
+      "win_rate": 79.2,
+      "avg_ret": 4.0
     }
   },
   "by_stock": {
@@ -109,6 +109,60 @@
       "count": 1,
       "win_rate": 100.0,
       "avg_ret": 9.98
+    },
+    "001337": {
+      "name": "四川黄金",
+      "count": 1,
+      "win_rate": 100.0,
+      "avg_ret": 9.97
+    },
+    "688796": {
+      "name": "百奥赛图",
+      "count": 1,
+      "win_rate": 0.0,
+      "avg_ret": -6.94
+    },
+    "688621": {
+      "name": "阳光诺和",
+      "count": 1,
+      "win_rate": 0.0,
+      "avg_ret": -1.53
+    },
+    "000998": {
+      "name": "隆平高科",
+      "count": 1,
+      "win_rate": 100.0,
+      "avg_ret": 2.88
+    },
+    "600354": {
+      "name": "敦煌种业",
+      "count": 1,
+      "win_rate": 100.0,
+      "avg_ret": 6.94
+    },
+    "000713": {
+      "name": "国投丰乐",
+      "count": 1,
+      "win_rate": 100.0,
+      "avg_ret": 2.63
+    },
+    "300601": {
+      "name": "康泰生物",
+      "count": 1,
+      "win_rate": 100.0,
+      "avg_ret": 4.25
+    },
+    "300122": {
+      "name": "智飞生物",
+      "count": 1,
+      "win_rate": 100.0,
+      "avg_ret": 8.67
+    },
+    "301207": {
+      "name": "华兰疫苗",
+      "count": 1,
+      "win_rate": 100.0,
+      "avg_ret": 3.03
     }
   },
   "daily": [
@@ -259,6 +313,96 @@
           "buy": 8.52,
           "sell_close": 9.37,
           "ret": 9.98
+        }
+      ]
+    },
+    {
+      "date": "2026-08-21",
+      "count": 3,
+      "hit": 1,
+      "win_rate": 33.3,
+      "avg_ret": 0.5,
+      "targets": [
+        {
+          "name": "四川黄金",
+          "code": "001337",
+          "buy": 51.47,
+          "sell_close": 56.6,
+          "ret": 9.97
+        },
+        {
+          "name": "百奥赛图",
+          "code": "688796",
+          "buy": 134.24,
+          "sell_close": 124.92,
+          "ret": -6.94
+        },
+        {
+          "name": "阳光诺和",
+          "code": "688621",
+          "buy": 66.01,
+          "sell_close": 65.0,
+          "ret": -1.53
+        }
+      ]
+    },
+    {
+      "date": "2026-08-24",
+      "count": 3,
+      "hit": 3,
+      "win_rate": 100.0,
+      "avg_ret": 4.15,
+      "targets": [
+        {
+          "name": "隆平高科",
+          "code": "000998",
+          "buy": 8.67,
+          "sell_close": 8.92,
+          "ret": 2.88
+        },
+        {
+          "name": "敦煌种业",
+          "code": "600354",
+          "buy": 6.63,
+          "sell_close": 7.09,
+          "ret": 6.94
+        },
+        {
+          "name": "国投丰乐",
+          "code": "000713",
+          "buy": 6.08,
+          "sell_close": 6.24,
+          "ret": 2.63
+        }
+      ]
+    },
+    {
+      "date": "2026-08-25",
+      "count": 3,
+      "hit": 3,
+      "win_rate": 100.0,
+      "avg_ret": 5.32,
+      "targets": [
+        {
+          "name": "康泰生物",
+          "code": "300601",
+          "buy": 12.95,
+          "sell_close": 13.5,
+          "ret": 4.25
+        },
+        {
+          "name": "智飞生物",
+          "code": "300122",
+          "buy": 13.04,
+          "sell_close": 14.17,
+          "ret": 8.67
+        },
+        {
+          "name": "华兰疫苗",
+          "code": "301207",
+          "buy": 17.47,
+          "sell_close": 18.0,
+          "ret": 3.03
         }
       ]
     }
@@ -413,6 +557,96 @@
       "ret": 9.98,
       "sell_close": 9.37,
       "ret_close": 9.98
+    },
+    {
+      "date": "2026-08-21",
+      "code": "001337",
+      "name": "四川黄金",
+      "buy": 51.47,
+      "sell": 56.6,
+      "ret": 9.97,
+      "sell_close": 56.6,
+      "ret_close": 9.97
+    },
+    {
+      "date": "2026-08-21",
+      "code": "688796",
+      "name": "百奥赛图",
+      "buy": 134.24,
+      "sell": 124.92,
+      "ret": -6.94,
+      "sell_close": 124.92,
+      "ret_close": -6.94
+    },
+    {
+      "date": "2026-08-21",
+      "code": "688621",
+      "name": "阳光诺和",
+      "buy": 66.01,
+      "sell": 65.0,
+      "ret": -1.53,
+      "sell_close": 65.0,
+      "ret_close": -1.53
+    },
+    {
+      "date": "2026-08-24",
+      "code": "000998",
+      "name": "隆平高科",
+      "buy": 8.67,
+      "sell": 8.92,
+      "ret": 2.88,
+      "sell_close": 8.92,
+      "ret_close": 2.88
+    },
+    {
+      "date": "2026-08-24",
+      "code": "600354",
+      "name": "敦煌种业",
+      "buy": 6.63,
+      "sell": 7.09,
+      "ret": 6.94,
+      "sell_close": 7.09,
+      "ret_close": 6.94
+    },
+    {
+      "date": "2026-08-24",
+      "code": "000713",
+      "name": "国投丰乐",
+      "buy": 6.08,
+      "sell": 6.24,
+      "ret": 2.63,
+      "sell_close": 6.24,
+      "ret_close": 2.63
+    },
+    {
+      "date": "2026-08-25",
+      "code": "300601",
+      "name": "康泰生物",
+      "buy": 12.95,
+      "sell": 13.5,
+      "ret": 4.25,
+      "sell_close": 13.5,
+      "ret_close": 4.25
+    },
+    {
+      "date": "2026-08-25",
+      "code": "300122",
+      "name": "智飞生物",
+      "buy": 13.04,
+      "sell": 14.17,
+      "ret": 8.67,
+      "sell_close": 14.17,
+      "ret_close": 8.67
+    },
+    {
+      "date": "2026-08-25",
+      "code": "301207",
+      "name": "华兰疫苗",
+      "buy": 17.47,
+      "sell": 18.0,
+      "ret": 3.03,
+      "sell_close": 18.0,
+      "ret_close": 3.03
     }
   ]
 }

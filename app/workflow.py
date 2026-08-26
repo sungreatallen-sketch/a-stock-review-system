@@ -159,7 +159,12 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
             if auto_track:
                 settle_result = tr.settle_pending(cached)
             from .predict.daily import predict as predict_today
-            pred = predict_today(cached, target_date=trade_date)  # 传入 collector 找到的日期
+            # R11：目标交易日已有预测则复用，不重新生成/覆盖（防止数据源滞后误判覆盖用户已看到的预测）
+            pred = tr.get_prediction(trade_date)
+            if pred:
+                log.info("R11: %s 已有预测，直接复用（不覆盖）", trade_date)
+            else:
+                pred = predict_today(cached, target_date=trade_date)  # 传入 collector 找到的日期
             if auto_track:
                 tr.record_prediction(pred)
             report["prediction"] = {

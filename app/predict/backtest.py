@@ -130,11 +130,14 @@ class Backtest:
 
     def _index_5d_returns(self, trading: list) -> dict:
         """每个交易日 T 的指数 5 日累计涨幅（用于择时过滤）"""
+        # 注意：MCP 接口 start_date+end_date 会漏掉 end_date 当天（左闭右开）
+        # 只用 end_date+limit 查完整数据，再按 trading[0] 过滤
         resp = self.mcp.call(
             "tongzhou-fin-research_fin_data__get_kline_series",
             {"ticker": INDEX_TICKER, "market": "index",
-             "start_date": trading[0], "end_date": trading[-1], "limit": len(trading) + 10})
-        pts = sorted(_points(resp), key=lambda x: x["time"])
+             "end_date": trading[-1], "limit": len(trading) + 10})
+        pts = sorted((p for p in _points(resp) if p.get("time", "") >= trading[0]),
+                     key=lambda x: x["time"])
         out = {}
         for i in range(5, len(pts)):
             c5 = pts[i - 5]["close"]
@@ -144,11 +147,13 @@ class Backtest:
 
     def _index_benchmark(self, trading: list) -> dict:
         """同口径基准：每个交易日收盘买上证指数、次日开盘卖"""
+        # 注意：MCP 接口 start_date+end_date 会漏掉 end_date 当天（左闭右开）
+        # 只用 end_date+limit 查完整数据，再按 trading[0] 过滤
         resp = self.mcp.call(
             "tongzhou-fin-research_fin_data__get_kline_series",
             {"ticker": INDEX_TICKER, "market": "index",
-             "start_date": trading[0], "end_date": trading[-1], "limit": len(trading) + 10})
-        pts = {p["time"]: p for p in _points(resp)}
+             "end_date": trading[-1], "limit": len(trading) + 10})
+        pts = {p["time"]: p for p in _points(resp) if p.get("time", "") >= trading[0]}
         rets = []
         for i in range(len(trading) - 1):
             a, b = pts.get(trading[i]), pts.get(trading[i + 1])

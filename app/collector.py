@@ -215,7 +215,7 @@ class Collector:
             raise RuntimeError("无法获取交易日数据（ego browser 采集失败）")
 
         report_date = f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]}"
-        ego_index = parse_index(raw.get("index"))
+        ego_index = parse_index(_try_load(raw.get("index")))  # raw 里 index 可能是 JSON 字符串，需先解析
         result = {
             "date": report_date,
             "market_index": self._collect_index(ego_index, trade_date),

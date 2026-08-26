@@ -57,11 +57,14 @@ def _with_fallback(url, delay_host="https://push2delay.eastmoney.com", main_host
 def build_tasks(d: str) -> list:
     """d: YYYYMMDD 交易日"""
     return [
-        # 指数
+        # 指数（push2delay 优先，push2 兜底；push2 主域名易被限流返回空）
         _t("index",
            "https://push2.eastmoney.com/api/qt/ulist.np/get"
            "?secids=1.000001,0.399001,0.399006,1.000688"
-           "&fields=f2,f3,f4,f6,f12,f14&fltt=2&invt=2"),
+           "&fields=f2,f3,f4,f6,f12,f14&fltt=2&invt=2",
+           urls=_with_fallback("https://push2.eastmoney.com/api/qt/ulist.np/get"
+                               "?secids=1.000001,0.399001,0.399006,1.000688"
+                               "&fields=f2,f3,f4,f6,f12,f14&fltt=2&invt=2")),
         # 涨停池（全量，用于统计连板高度）
         _t("zt_pool",
            f"https://push2ex.eastmoney.com/getTopicZTPool?ut={UT}&dpt=wz.ztzt"
@@ -151,8 +154,17 @@ def _num(v, default=None):
         return default
 
 
-def parse_index(raw: dict) -> dict:
+def parse_index(raw) -> dict:
     """东财指数 ulist -> {name: {close,pct,change,amount}}"""
+    # 防御：raw 可能是 JSON 字符串或 None
+    if isinstance(raw, str):
+        import json as _json
+        try:
+            raw = _json.loads(raw)
+        except Exception:
+            raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
     out = {}
     diff = ((raw or {}).get("data") or {}).get("diff") or []
     for row in diff:

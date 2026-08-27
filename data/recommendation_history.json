@@ -1,22 +1,22 @@
 {
   "meta": {
     "version": "1.0",
-    "updated_at": "2026-08-26T22:16:33",
+    "updated_at": "2026-08-27T22:48:32",
     "note": "后台数据积累文件：全部已结算推荐记录与分析；前端报告只展示最近一天，不展示本文件累计"
   },
   "cumulative": {
-    "count": 24,
-    "win_rate": 66.7,
-    "avg_ret": 2.85,
-    "median_ret": 2.5,
+    "count": 27,
+    "win_rate": 70.4,
+    "avg_ret": 2.82,
+    "median_ret": 2.36,
     "best": 10.01,
     "worst": -6.94
   },
   "by_month": {
     "2026-08": {
-      "count": 24,
-      "win_rate": 66.7,
-      "avg_ret": 2.85
+      "count": 27,
+      "win_rate": 70.4,
+      "avg_ret": 2.82
     }
   },
   "by_stock": {
@@ -157,6 +157,24 @@
       "count": 1,
       "win_rate": 0.0,
       "avg_ret": -5.21
+    },
+    "300601": {
+      "name": "康泰生物",
+      "count": 1,
+      "win_rate": 100.0,
+      "avg_ret": 0.37
+    },
+    "300122": {
+      "name": "智飞生物",
+      "count": 1,
+      "win_rate": 100.0,
+      "avg_ret": 5.86
+    },
+    "301207": {
+      "name": "华兰疫苗",
+      "count": 1,
+      "win_rate": 100.0,
+      "avg_ret": 1.44
     }
   },
   "daily": [
@@ -397,6 +415,36 @@
           "buy": 37.45,
           "sell_close": 35.5,
           "ret": -5.21
+        }
+      ]
+    },
+    {
+      "date": "2026-08-26",
+      "count": 3,
+      "hit": 3,
+      "win_rate": 100.0,
+      "avg_ret": 2.56,
+      "targets": [
+        {
+          "name": "康泰生物",
+          "code": "300601",
+          "buy": 13.5,
+          "sell_close": 13.55,
+          "ret": 0.37
+        },
+        {
+          "name": "智飞生物",
+          "code": "300122",
+          "buy": 14.17,
+          "sell_close": 15.0,
+          "ret": 5.86
+        },
+        {
+          "name": "华兰疫苗",
+          "code": "301207",
+          "buy": 18.0,
+          "sell_close": 18.26,
+          "ret": 1.44
         }
       ]
     }
@@ -641,6 +689,36 @@
       "ret": -5.21,
       "sell_close": 35.5,
       "ret_close": -5.21
+    },
+    {
+      "date": "2026-08-26",
+      "code": "300601",
+      "name": "康泰生物",
+      "buy": 13.5,
+      "sell": 13.55,
+      "ret": 0.37,
+      "sell_close": 13.55,
+      "ret_close": 0.37
+    },
+    {
+      "date": "2026-08-26",
+      "code": "300122",
+      "name": "智飞生物",
+      "buy": 14.17,
+      "sell": 15.0,
+      "ret": 5.86,
+      "sell_close": 15.0,
+      "ret_close": 5.86
+    },
+    {
+      "date": "2026-08-26",
+      "code": "301207",
+      "name": "华兰疫苗",
+      "buy": 18.0,
+      "sell": 18.26,
+      "ret": 1.44,
+      "sell_close": 18.26,
+      "ret_close": 1.44
     }
   ]
 }

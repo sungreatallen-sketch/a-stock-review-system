@@ -7,6 +7,7 @@ import sqlite3
 from pathlib import Path
 
 log = logging.getLogger("cache")
+MCP_TTL_SECONDS = 900  # 缓存有效期15分钟(收盘后数据固定)
 
 
 class MCPCache:
@@ -35,10 +36,11 @@ class MCPCache:
         conn.close()
         if not row:
             return None
-        # TTL：当天缓存的命中，跨天自动过期重拉（防止旧数据永久命中导致交易日误判）
+        # TTL：15 分钟有效（收盘后数据固定，15分钟足够；防止凌晨缓存旧数据整天命中）
+        # 注意：不能用"当天有效"，否则凌晨缓存的不含当日 K 线数据会整天命中
         try:
             created = datetime.fromisoformat(row[1])
-            if created.date() != datetime.now().date():
+            if (datetime.now() - created).total_seconds() > MCP_TTL_SECONDS:
                 return None
         except Exception:
             return None

@@ -61,23 +61,37 @@ def build_summary(d: dict) -> str:
     )
     if pred.get("market_view"):
         summary += f"\n📌 市场判断：{pred['market_view']}"
-    # 昨日推荐复盘
+    # 昨日推荐复盘（优先用 latest_prediction，确保显示昨天的推荐而非前天）
     tracking = d.get("tracking", {})
     stats = tracking.get("stats", {})
+    latest_pred = tracking.get("latest_prediction", {})
     recent = stats.get("recent", [])
+    # 累计统计
     if stats.get("count"):
-        summary += (f"\n📈 **昨日推荐复盘**：命中率 {stats.get('win_rate')}%"
+        summary += (f"\n📈 **累计命中率**：{stats.get('win_rate')}%"
                     f"（{stats.get('count')} 笔）｜平均 {stats.get('avg_ret')}%")
-    if recent:
-        latest_date = recent[0].get("date")
-        day_rows = [r for r in recent if r.get("date") == latest_date]
-        wins = sum(1 for r in day_rows if (r.get("ret") or 0) > 0)
-        prev_lines = ["\n\n📈 **昨日推荐复盘（昨收买 → 今收卖）**"]
-        for r in day_rows:
-            s = "+" if (r.get("ret") or 0) >= 0 else ""
-            prev_lines.append(f"· {r.get('name')}：昨收 {r.get('buy')} → 今收 {r.get('sell_close')}（{s}{r.get('ret')}%）")
-        prev_lines.append(f"命中 {wins}/{len(day_rows)}｜累计命中率 {stats.get('win_rate')}%")
-        summary += "\n".join(prev_lines)
+    # 昨日推荐标的（从 latest_prediction 读取，确保是昨天的推荐）
+    pred_targets = latest_pred.get("targets", [])
+    pred_date = latest_pred.get("date", "")
+    if pred_targets:
+        # 检查是否有结算数据
+        settled_rows = [r for r in recent if r.get("date") == pred_date]
+        if settled_rows:
+            # 已结算：显示买卖价格和收益
+            wins = sum(1 for r in settled_rows if (r.get("ret") or 0) > 0)
+            prev_lines = [f"\n\n📈 **昨日推荐标的（{pred_date}）**"]
+            for r in settled_rows:
+                s = "+" if (r.get("ret") or 0) >= 0 else ""
+                prev_lines.append(f"· {r.get('name')}：昨收 {r.get('buy')} → 今收 {r.get('sell_close')}（{s}{r.get('ret')}%）")
+            prev_lines.append(f"命中 {wins}/{len(settled_rows)}")
+            summary += "\n".join(prev_lines)
+        else:
+            # 未结算：只显示推荐标的（无收益数据）
+            prev_lines = [f"\n\n📈 **昨日推荐标的（{pred_date}，待结算）**"]
+            for t in pred_targets:
+                buy = t.get("参考买入价(收盘)", "—")
+                prev_lines.append(f"· {t.get('name')}（{t.get('code')}）：昨收 {buy}")
+            summary += "\n".join(prev_lines)
     # 今日预测
     if targets:
         t_lines = ["\n**次日标的（收盘价附近买入，次日开盘卖出）**"]

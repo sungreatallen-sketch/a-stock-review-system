@@ -210,6 +210,7 @@ function boardTable(rows){
   const t = DATA.tracking||{};
   const stats = t.stats||{};
   const settle = t.settle||{};
+  const latestPred = t.latest_prediction||{};
   const box = document.getElementById('trackBox');
   let html = '';
   if (settle && settle.settled) {
@@ -221,16 +222,40 @@ function boardTable(rows){
       <div class="b"><div class="v">${stats.avg_ret??'-'}</div><div class="l">平均收益%</div></div>
       <div class="b"><div class="v">${stats.best??'-'}</div><div class="l">最佳%</div></div>
       <div class="b"><div class="v">${stats.count??'-'}</div><div class="l">已结算笔数</div></div></div>`;
+  }
+  // 昨日推荐标的（优先用 latest_prediction，确保显示昨天的推荐而非前天）
+  const predTargets = latestPred.targets||[];
+  const predDate = latestPred.date||'';
+  if (predTargets.length) {
+    const rows = stats.recent||[];
+    const settledRows = rows.filter(r => r.date === predDate);
+    if (settledRows.length) {
+      // 已结算：显示买卖价格和收益
+      const wins = settledRows.filter(r => (r.ret||0) > 0).length;
+      html += `<div class="tbl-wrap" style="margin-top:10px"><table>
+        <tr><th>日期</th><th>标的</th><th>昨收</th><th>今收</th><th>收益</th></tr>` +
+        settledRows.map(r=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.buy}</td><td>${r.sell_close??'-'}</td>
+          <td class="${cls(r.ret)}">${r.ret>=0?'+':''}${r.ret}%</td></tr>`).join('') + `</table>
+        <div class="note">命中 ${wins}/${settledRows.length}</div></div>`;
+    } else {
+      // 未结算：只显示推荐标的（无收益数据）
+      html += `<div class="tbl-wrap" style="margin-top:10px"><table>
+        <tr><th>日期</th><th>标的</th><th>昨收</th><th>今收</th><th>收益</th></tr>` +
+        predTargets.map(t=>`<tr><td>${predDate}</td><td>${t.name||''}</td><td>${t['参考买入价(收盘)']||'-'}</td><td>—</td>
+          <td>待结算</td></tr>`).join('') + `</table>
+        <div class="note">昨日推荐待结算（次日收盘后自动结算）</div></div>`;
+    }
+  } else if (stats && stats.count) {
+    // 兜底：如果没有 latest_prediction，用旧逻辑
     const rows = stats.recent||[];
     if (rows.length) {
-      // 仅展示最近一个结算日（昨日推荐）；历史累计数据在后台 data/recommendation_history.json
       const latest = rows[0].date;
       const dayRows = rows.filter(r => r.date === latest);
       html += `<div class="tbl-wrap" style="margin-top:10px"><table>
         <tr><th>日期</th><th>标的</th><th>昨收</th><th>今收</th><th>收益</th></tr>` +
         dayRows.map(r=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.buy}</td><td>${r.sell_close??'-'}</td>
           <td class="${cls(r.ret)}">${r.ret>=0?'+':''}${r.ret}%</td></tr>`).join('') + `</table>
-        <div class="note">仅展示最近一天推荐；历史累计与分析存于后台 data/recommendation_history.json（不在此页累计展示）</div></div>`;
+        <div class="note">仅展示最近一天推荐</div></div>`;
     }
   } else {
     html += `<div class="note">暂无已结算推荐记录（每天复盘/预测后，次日自动结算）</div>`;

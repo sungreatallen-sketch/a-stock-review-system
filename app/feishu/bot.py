@@ -292,28 +292,36 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
         )
         if pred.get("market_view"):
             summary += f"\n📌 市场判断：{pred['market_view']}"
-        # 顶部醒目：昨日推荐命中率摘要（问题4：保证用户第一眼看到）
-        tstats0 = (report.get("tracking") or {}).get("stats") or {}
-        if tstats0.get("count"):
-            summary += (f"\n📈 **昨日推荐复盘**：命中率 {tstats0.get('win_rate')}%"
-                        f"（{tstats0.get('count')} 笔）｜平均 {tstats0.get('avg_ret')}%"
-                        f"（昨收→今收）")
+        # 顶部醒目：累计命中率摘要
         tracking = report.get("tracking") or {}
         tstats = tracking.get("stats") or {}
-        rows = (tstats.get("recent") or [])
-        if rows:
-            # 取最近一个已结算日的推荐明细（昨日推荐复盘）
-            latest_date = rows[0].get("date")
-            day_rows = [r for r in rows if r.get("date") == latest_date]
-            wins = sum(1 for r in day_rows if (r.get("ret") or 0) > 0)
-            prev_lines = [f"\n\n📈 **昨日推荐复盘（昨收买 → 今收卖，收盘-收盘）**"]
-            for r in day_rows:
-                s = "+" if (r.get("ret") or 0) >= 0 else ""
-                prev_lines.append(
-                    f"· {r.get('name')}：昨收 {r.get('buy')} → 今收 {r.get('sell_close')}（{s}{r.get('ret')}%）")
-            prev_lines.append(f"命中 {wins}/{len(day_rows)}｜累计命中率 {tstats.get('win_rate')}%"
-                              f"（{tstats.get('count')} 笔）｜平均 {tstats.get('avg_ret')}%")
-            summary += "\n".join(prev_lines)
+        if tstats.get("count"):
+            summary += (f"\n📈 **累计命中率**：{tstats.get('win_rate')}%"
+                        f"（{tstats.get('count')} 笔）｜平均 {tstats.get('avg_ret')}%")
+        # 昨日推荐标的（优先用 latest_prediction，确保显示昨天的推荐而非前天）
+        latest_pred = tracking.get("latest_prediction", {})
+        pred_targets = latest_pred.get("targets", [])
+        pred_date = latest_pred.get("date", "")
+        if pred_targets:
+            rows = (tstats.get("recent") or [])
+            settled_rows = [r for r in rows if r.get("date") == pred_date]
+            if settled_rows:
+                # 已结算：显示买卖价格和收益
+                wins = sum(1 for r in settled_rows if (r.get("ret") or 0) > 0)
+                prev_lines = [f"\n\n📈 **昨日推荐标的（{pred_date}）**"]
+                for r in settled_rows:
+                    s = "+" if (r.get("ret") or 0) >= 0 else ""
+                    prev_lines.append(
+                        f"· {r.get('name')}：昨收 {r.get('buy')} → 今收 {r.get('sell_close')}（{s}{r.get('ret')}%）")
+                prev_lines.append(f"命中 {wins}/{len(settled_rows)}")
+                summary += "\n".join(prev_lines)
+            else:
+                # 未结算：只显示推荐标的（无收益数据）
+                prev_lines = [f"\n\n📈 **昨日推荐标的（{pred_date}，待结算）**"]
+                for t in pred_targets:
+                    buy = t.get("参考买入价(收盘)", "—")
+                    prev_lines.append(f"· {t.get('name')}（{t.get('code')}）：昨收 {buy}")
+                summary += "\n".join(prev_lines)
         if targets:
             t_lines = ["\n**次日标的（收盘价附近买入，次日开盘卖出）**"]
             for i, t in enumerate(targets, 1):

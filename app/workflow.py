@@ -22,10 +22,20 @@ def _get_cached_mcp():
 
 
 def _build_tracking(tr, settle_result) -> dict:
-    """推荐跟踪数据：昨日结算 + 累计命中率统计"""
+    """推荐跟踪数据：昨日结算 + 累计命中率统计 + 最新预测（含未结算）"""
     try:
         stats = tr.stats(days=120)
-        return {"settle": settle_result, "stats": stats}
+        # 补充：最新预测记录（即使未结算，也要显示昨日推荐标的）
+        latest = tr.latest_prediction()
+        latest_pred = None
+        if latest:
+            import json as _json
+            pred_data = _json.loads(latest[1])
+            latest_pred = {
+                "date": latest[0],
+                "targets": pred_data.get("targets", []),
+            }
+        return {"settle": settle_result, "stats": stats, "latest_prediction": latest_pred}
     except Exception as e:
         log.warning("跟踪数据组装失败: %s", str(e)[:100])
         return {"settle": settle_result, "stats": {"count": 0}}

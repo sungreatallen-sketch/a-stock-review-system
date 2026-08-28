@@ -69,6 +69,25 @@ class Tracker:
         conn.close()
         return row
 
+    def _find_settleable_prediction(self, today: str):
+        """找昨天及之前的未结算预测（今天的预测今天不能结算）"""
+        conn = self._conn()
+        rows = conn.execute(
+            "SELECT date, targets FROM predictions WHERE date < ? ORDER BY date DESC",
+            (today,)
+        ).fetchall()
+        conn.close()
+        for pred_date, targets in rows:
+            conn2 = self._conn()
+            settled = conn2.execute(
+                "SELECT COUNT(*) FROM prediction_results WHERE date=? AND status='settled'",
+                (pred_date,)
+            ).fetchone()[0]
+            conn2.close()
+            if not settled:
+                return (pred_date, targets)
+        return None
+
     def get_prediction(self, pred_date: str):
         """按日期读取已保存的预测（R11 同日预测锁定复用用）
         返回 dict（含 date/targets 等），无记录返回 None"""
@@ -120,22 +139,19 @@ class Tracker:
         return {"date": pred_date, "settled": saved, "missing_open": missing}
 
     def settle_pending(self, cached, today: str = None) -> dict:
-        """自动结算：找最近一条未结算预测，若其次日为过去交易日则回填开盘价"""
-        row = self.latest_prediction()
+        """自动结算：找最近一条未结算预测（昨天及之前），若其次日为过去交易日则回填收盘价"""
+        from datetime import date as _date
+        today_str = today or str(_date.today())
+        # 找昨天及之前的未结算预测（今天的预测今天不能结算）
+        row = self._find_settleable_prediction(today_str)
         if not row:
-            return {"note": "无预测记录"}
+            return {"note": "无可结算预测"}
         pred_date = row[0]
-        # 若该日已结算且无新预测，跳过
         conn = self._conn()
-        settled = conn.execute("SELECT COUNT(*) FROM prediction_results WHERE date=? AND status='settled'",
-                               (pred_date,)).fetchone()[0]
-        conn.close()
-        if settled:
-            return {"date": pred_date, "note": "该日预测已结算"}
 
         # 找次日交易日（MCP 失败用 ego 兜底）
         from .backtest import INDEX_TICKER
-        today = today or str(date.today())
+        today = today_str
         pts = []
         try:
             # 注意：MCP 接口 start_date+end_date 会漏掉 end_date 当天（左闭右开）
@@ -179,18 +195,30 @@ class Tracker:
                                    {"ticker": code, "market": "a_stock", "end_date": sell_date, "limit": 6})
                 # 类型检查：resp 可能是字符串（MCP 返回异常）
                 if not isinstance(resp, dict):
-                    log.warning("MCP 返回非 dict 类型: %s", type(resp).__name__)
+                    log.warning("MCP K线返回非 dict: %s", type(resp).__name__)
                     mcp_failed = True
-                    continue
-                pt = next((x for x in ((resp or {}).get("data") or {}).get("points") or []
-                           if x.get("time") == sell_date), None)
-                if pt and pt.get("open"):
-                    opens[code] = pt["open"]
-                if pt and pt.get("close"):
-                    closes[code] = pt["close"]
+                else:
+                    pt = next((x for x in ((resp or {}).get("data") or {}).get("points") or []
+                               if x.get("time") == sell_date), None)
+                    if pt and pt.get("open"):
+                        opens[code] = pt["open"]
+                    if pt and pt.get("close"):
+                        closes[code] = pt["close"]
             except Exception as e:
                 mcp_failed = True
-                log.warning("MCP 取 %s 行情失败: %s", code, str(e)[:120])
+                log.warning("MCP K线取 %s 失败: %s", code, str(e)[:120])
+            # K线失败时用 get_latest_snapshot 兜底（MCP 可用工具）
+            if code not in closes:
+                try:
+                    snap = cached.call("tongzhou-fin-research_fin_data__get_latest_snapshot",
+                                       {"ticker": code, "market": "a_stock"})
+                    data = (snap or {}).get("data") or {}
+                    lp = data.get("last_price")
+                    if lp and code not in closes:
+                        closes[code] = float(lp)
+                        log.info("snapshot 兜底 %s 收盘价: %s", code, lp)
+                except Exception as e:
+                    log.warning("snapshot 兜底 %s 失败: %s", code, str(e)[:80])
         if not opens:
             # 兜底：ego browser 东财K线（含开盘价+收盘价）
             log.info("MCP 未返回有效行情，切换到 ego browser 获取行情")

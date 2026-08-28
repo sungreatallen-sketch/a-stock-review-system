@@ -191,14 +191,15 @@ class Tracker:
             except Exception as e:
                 mcp_failed = True
                 log.warning("MCP 取 %s 行情失败: %s", code, str(e)[:120])
-        if not opens and mcp_failed:
-            # 兜底：ego browser 东财K线（仅开盘价，收盘价尽力而为）
-            log.info("MCP 不可用，切换到 ego browser 获取行情")
+        if not opens:
+            # 兜底：ego browser 东财K线（含开盘价+收盘价）
+            log.info("MCP 未返回有效行情，切换到 ego browser 获取行情")
             from .alt_data import EgoOpenPrices
             from ..config import paths as get_paths
             ego = EgoOpenPrices(get_paths()["data"] / "ego_kline.db")
-            ego_opens = ego.fetch(sell_date, codes)
+            ego_opens, ego_closes = ego.fetch_with_close(sell_date, codes)
             opens.update(ego_opens)
+            closes.update(ego_closes)
         if not opens:
             return {"date": pred_date, "sell_date": sell_date, "note": "次日开盘价未获取到"}
         res = self.settle(pred_date, opens, closes)

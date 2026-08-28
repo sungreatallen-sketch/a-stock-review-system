@@ -1,22 +1,22 @@
 {
   "meta": {
     "version": "1.0",
-    "updated_at": "2026-08-27T22:48:32",
+    "updated_at": "2026-08-28T20:22:40",
     "note": "后台数据积累文件：全部已结算推荐记录与分析；前端报告只展示最近一天，不展示本文件累计"
   },
   "cumulative": {
-    "count": 27,
-    "win_rate": 70.4,
-    "avg_ret": 2.82,
-    "median_ret": 2.36,
-    "best": 10.01,
-    "worst": -6.94
+    "count": 30,
+    "win_rate": 66.7,
+    "avg_ret": 2.41,
+    "median_ret": 1.9,
+    "best": 10.05,
+    "worst": -7.75
   },
   "by_month": {
     "2026-08": {
-      "count": 27,
-      "win_rate": 70.4,
-      "avg_ret": 2.82
+      "count": 30,
+      "win_rate": 66.7,
+      "avg_ret": 2.41
     }
   },
   "by_stock": {
@@ -136,9 +136,9 @@
     },
     "600354": {
       "name": "敦煌种业",
-      "count": 1,
+      "count": 2,
       "win_rate": 100.0,
-      "avg_ret": 6.94
+      "avg_ret": 8.5
     },
     "000713": {
       "name": "国投丰乐",
@@ -175,6 +175,18 @@
       "count": 1,
       "win_rate": 100.0,
       "avg_ret": 1.44
+    },
+    "300313": {
+      "name": "天山生物",
+      "count": 1,
+      "win_rate": 0.0,
+      "avg_ret": -7.75
+    },
+    "688635": {
+      "name": "长进光子",
+      "count": 1,
+      "win_rate": 0.0,
+      "avg_ret": -6.28
     }
   },
   "daily": [
@@ -445,6 +457,36 @@
           "buy": 18.0,
           "sell_close": 18.26,
           "ret": 1.44
+        }
+      ]
+    },
+    {
+      "date": "2026-08-27",
+      "count": 3,
+      "hit": 1,
+      "win_rate": 33.3,
+      "avg_ret": -1.33,
+      "targets": [
+        {
+          "name": "敦煌种业",
+          "code": "600354",
+          "buy": 7.46,
+          "sell_close": 8.21,
+          "ret": 10.05
+        },
+        {
+          "name": "天山生物",
+          "code": "300313",
+          "buy": 16.64,
+          "sell_close": 15.35,
+          "ret": -7.75
+        },
+        {
+          "name": "长进光子",
+          "code": "688635",
+          "buy": 313.56,
+          "sell_close": 293.88,
+          "ret": -6.28
         }
       ]
     }
@@ -719,6 +761,36 @@
       "ret": 1.44,
       "sell_close": 18.26,
       "ret_close": 1.44
+    },
+    {
+      "date": "2026-08-27",
+      "code": "600354",
+      "name": "敦煌种业",
+      "buy": 7.46,
+      "sell": 8.21,
+      "ret": 10.05,
+      "sell_close": 8.21,
+      "ret_close": 10.05
+    },
+    {
+      "date": "2026-08-27",
+      "code": "300313",
+      "name": "天山生物",
+      "buy": 16.64,
+      "sell": 15.35,
+      "ret": -7.75,
+      "sell_close": 15.35,
+      "ret_close": -7.75
+    },
+    {
+      "date": "2026-08-27",
+      "code": "688635",
+      "name": "长进光子",
+      "buy": 313.56,
+      "sell": 293.88,
+      "ret": -6.28,
+      "sell_close": 293.88,
+      "ret_close": -6.28
     }
   ]
 }

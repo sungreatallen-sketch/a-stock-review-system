@@ -47,7 +47,8 @@ def _secid(code: str) -> str:
 
 def _kline_url(code: str, limit: int = 6) -> str:
     secid = _secid(code)
-    return ("https://push2delay.eastmoney.com/api/qt/stock/kline/get"
+    # push2his: 历史数据（含收盘价），push2delay: 实时数据（个股K线为空）
+    return ("https://push2his.eastmoney.com/api/qt/stock/kline/get"
             f"?secid={secid}&fields1=f1,f2,f3,f4,f5,f6"
             "&fields2=f51,f52,f53,f54,f55,f56,f57,f58"
             f"&klt=101&fqt=0&end=20500101&lmt={limit}")
@@ -111,16 +112,21 @@ class EgoOpenPrices:
 
     def fetch(self, date_str: str, codes: list) -> dict:
         """返回 {code: 开盘价}，只含能取到的"""
-        out = {}
+        opens, _ = self.fetch_with_close(date_str, codes)
+        return opens
+
+    def fetch_with_close(self, date_str: str, codes: list) -> tuple:
+        """返回 ({code: 开盘价}, {code: 收盘价})，只含能取到的"""
+        opens, closes = {}, {}
         todo = []
         for c in codes:
             v = self._cached(c, date_str)
             if v:
-                out[c] = v
+                opens[c] = v
             else:
                 todo.append({"label": c, "url": _kline_url(c), "referer": BASE})
         if not todo:
-            return out
+            return opens, closes
         script = (NODE
                   .replace("BASE_PLACEHOLDER", json.dumps(BASE))
                   .replace("__JOBS__", json.dumps(todo, ensure_ascii=False)))
@@ -130,7 +136,7 @@ class EgoOpenPrices:
                                   env={"PATH": "/Users/yage/.local/bin:/usr/bin:/bin:/usr/local/bin"})
         except Exception as e:
             log.error("ego browser 失败: %s", str(e)[:150])
-            return out
+            return opens, closes
         for line in ((proc.stdout or "") + (proc.stderr or "")).splitlines():
             line = line.strip()
             if line.startswith("{") and line.endswith("}"):
@@ -142,8 +148,9 @@ class EgoOpenPrices:
                             klines = ((j or {}).get("data") or {}).get("klines") or []
                             for k in klines:
                                 parts = k.split(",")
-                                if len(parts) >= 2 and parts[0] == date_str:
-                                    out[code] = float(parts[1])  # f52 开盘
+                                if len(parts) >= 3 and parts[0] == date_str:
+                                    opens[code] = float(parts[1])   # 开盘价
+                                    closes[code] = float(parts[2])  # 收盘价
                                     self._save(code, date_str, float(parts[1]))
                                     break
                         except Exception:
@@ -151,7 +158,7 @@ class EgoOpenPrices:
                     break
                 except Exception:
                     continue
-        return out
+        return opens, closes
 
 
 class EgoDailyData:

@@ -16,11 +16,35 @@ log = logging.getLogger("daily")
 
 
 def _kline_lookup_factory(cached):
-    """K线查询：MCP 优先，失败自动切 ego browser 兜底"""
+    """K线查询：THS 优先 → MCP → ego browser 兜底"""
     def lookup(ticker, end_date):
+        from .ths_client import get_ths_client
+        ths = get_ths_client()
+        # THS 优先（REST API 直连，不经过 WorkBuddy）
+        try:
+            thscode = f"{ticker}.SH" if ticker.startswith("6") else f"{ticker}.SZ"
+            from datetime import date as _d, timedelta as _td
+            end = _d.fromisoformat(end_date)
+            start = end - _td(days=14)
+            raw = ths.kline(thscode, start, end)
+            if raw:
+                points = []
+                for it in raw:
+                    dt = __import__("datetime").datetime.fromtimestamp(it["date_ms"] / 1000).strftime("%Y-%m-%d")
+                    points.append({
+                        "time": dt, "open": it.get("open_price"),
+                        "high": it.get("high_price"), "low": it.get("low_price"),
+                        "close": it.get("close_price"), "volume": it.get("volume"),
+                        "amount": it.get("turnover"),
+                    })
+                if points:
+                    log.info("THS K线 %s: %d 条", ticker, len(points))
+                    return {"data": {"points": points}}
+        except Exception as e:
+            log.warning("THS K线 %s 失败: %s", ticker, str(e)[:100])
+        # MCP 兜底
         resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
                            {"ticker": ticker, "market": "a_stock", "end_date": end_date, "limit": 12})
-        # MCP 返回有效数据时直接用
         points = ((resp or {}).get("data") or {}).get("points") or []
         if points:
             return resp

@@ -39,3 +39,8 @@ backtest:
 # false: 飞书 → 现有 workflow（Legacy Flow，完全不变）
 rsi:
   enabled: false
+
+# 同花顺金融数据 API（直连，绕过 WorkBuddy catalog 过滤）
+ths:
+  api_key: "sk-fuyao-wKWrOFtHouGgSbI27vVDaSoiPw6C6g9t"
+  base_url: "https://fuyao.aicubes.cn"

@@ -51,6 +51,32 @@ class Backtest:
 
     # ---------- 个股 K 线 ----------
     def _kline(self, ticker: str, end_date: str, start_date: str = None, limit: int = 20):
+        """获取 K 线：THS 优先 → MCP 兜底"""
+        from ..ths_client import get_ths_client
+        ths = get_ths_client()
+        # THS 优先
+        try:
+            thscode = f"{ticker}.SH" if ticker.startswith("6") else f"{ticker}.SZ"
+            from datetime import date as _d, timedelta as _td
+            end = _d.fromisoformat(end_date)
+            start = _d.fromisoformat(start_date) if start_date else end - _td(days=limit * 2)
+            raw = ths.kline(thscode, start, end)
+            if raw:
+                # 转为 MCP 兼容格式
+                points = []
+                for it in raw:
+                    dt = __import__("datetime").datetime.fromtimestamp(it["date_ms"] / 1000).strftime("%Y-%m-%d")
+                    points.append({
+                        "time": dt, "open": it.get("open_price"),
+                        "high": it.get("high_price"), "low": it.get("low_price"),
+                        "close": it.get("close_price"), "volume": it.get("volume"),
+                        "amount": it.get("turnover"),
+                    })
+                log.info("THS K线 %s: %d 条", ticker, len(points))
+                return {"data": {"points": points}}
+        except Exception as e:
+            log.warning("THS K线 %s 失败: %s", ticker, str(e)[:100])
+        # MCP 兜底
         args = {"ticker": ticker, "market": "a_stock", "end_date": end_date, "limit": limit}
         if start_date:
             args["start_date"] = start_date

@@ -149,22 +149,33 @@ class Tracker:
         pred_date = row[0]
         conn = self._conn()
 
-        # 找次日交易日（MCP 失败用 ego 兜底）
-        from .backtest import INDEX_TICKER
+        # 找次日交易日（THS 优先 → MCP → ego 兜底）
         today = today_str
         pts = []
+        # THS 优先
         try:
-            # 注意：MCP 接口 start_date+end_date 会漏掉 end_date 当天（左闭右开）
-            # 必须只用 end_date+limit 查完整交易日列表，再在 Python 侧按需过滤
-            resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
-                               {"ticker": INDEX_TICKER, "market": "index",
-                                "end_date": today, "limit": 12})
-            pts = sorted({p["time"] for p in ((resp or {}).get("data") or {}).get("points") or []})
-            # 只保留 pred_date 及之后的交易日（避免 pred_date 太旧不在列表）
-            if pred_date in pts:
-                pts = pts[pts.index(pred_date):]
+            from ..ths_client import get_ths_client
+            from datetime import date as _d, timedelta as _td
+            ths = get_ths_client()
+            ths_days = ths.trading_days(_d.fromisoformat(pred_date), _d.fromisoformat(today) + _td(days=1))
+            if ths_days:
+                pts = sorted(ths_days)
+                log.info("THS 交易日: %s", pts[-3:] if len(pts) > 3 else pts)
         except Exception as e:
-            log.warning("MCP 交易日历失败，切 ego 兜底: %s", str(e)[:100])
+            log.warning("THS 交易日历失败: %s", str(e)[:100])
+        # MCP 兜底
+        if not pts:
+            try:
+                from .backtest import INDEX_TICKER
+                resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
+                                   {"ticker": INDEX_TICKER, "market": "index",
+                                    "end_date": today, "limit": 12})
+                pts = sorted({p["time"] for p in ((resp or {}).get("data") or {}).get("points") or []})
+                if pred_date in pts:
+                    pts = pts[pts.index(pred_date):]
+            except Exception as e:
+                log.warning("MCP 交易日历失败，切 ego 兜底: %s", str(e)[:100])
+        # ego 兜底
         if not pts:
             from .alt_data import EgoOpenPrices
             from ..config import paths as get_paths
@@ -207,7 +218,20 @@ class Tracker:
             except Exception as e:
                 mcp_failed = True
                 log.warning("MCP K线取 %s 失败: %s", code, str(e)[:120])
-            # K线失败时用 get_latest_snapshot 兜底（MCP 可用工具）
+            # K线失败时用 THS API 兜底（直连，不经过 WorkBuddy）
+            if code not in closes:
+                try:
+                    from ..ths_client import get_ths_client
+                    ths = get_ths_client()
+                    thscode = f"{code}.SH" if code.startswith("6") else f"{code}.SZ"
+                    snap = ths.snapshot(thscode)
+                    lp = snap.get("last_price")
+                    if lp:
+                        closes[code] = float(lp)
+                        log.info("THS snapshot 兜底 %s 收盘价: %s", code, lp)
+                except Exception as e:
+                    log.warning("THS snapshot 兜底 %s 失败: %s", code, str(e)[:80])
+            # THS 失败再用 MCP snapshot 兜底
             if code not in closes:
                 try:
                     snap = cached.call("tongzhou-fin-research_fin_data__get_latest_snapshot",
@@ -216,9 +240,9 @@ class Tracker:
                     lp = data.get("last_price")
                     if lp and code not in closes:
                         closes[code] = float(lp)
-                        log.info("snapshot 兜底 %s 收盘价: %s", code, lp)
+                        log.info("MCP snapshot 兜底 %s 收盘价: %s", code, lp)
                 except Exception as e:
-                    log.warning("snapshot 兜底 %s 失败: %s", code, str(e)[:80])
+                    log.warning("MCP snapshot 兜底 %s 失败: %s", code, str(e)[:80])
         if not opens:
             # 兜底：ego browser 东财K线（含开盘价+收盘价）
             log.info("MCP 未返回有效行情，切换到 ego browser 获取行情")

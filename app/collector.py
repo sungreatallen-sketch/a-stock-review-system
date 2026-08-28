@@ -9,6 +9,7 @@ from .ego_scraper import (EgoScraper, build_tasks, parse_index, parse_pool_count
 from .mcp_client import McpClient, parse_mcp_json
 from .validator import validate_number, validate_text
 from .config import load_config
+from .ths_client import get_ths_client, thscode_for_index
 
 log = logging.getLogger("collector")
 
@@ -115,20 +116,29 @@ class Collector:
     # ---------- 指数 ----------
     def _collect_index(self, ego_index: dict, trade_date: str):
         out = {}
+        ths = get_ths_client()
         for name, cfg in INDEX_TDX.items():
             e = ego_index.get(name) or {}
+            # THS 优先（REST API 直连，不经过 WorkBuddy）
+            thscode = thscode_for_index(name)
+            snap = ths.ths_index_snapshot(thscode) if thscode else {}
+            t_close = snap.get("last_price")
+            t_pct = snap.get("price_change_ratio_pct")
+            t_amount = snap.get("turnover")
+            ths_src = f"同花顺API（{name}）"
             # MCP 兜底 + 验证：通达信
             resp = self._mcp_call("tdx-connector_tdx_quotes",
                                   {"code": cfg["code"], "setcode": cfg["setcode"],
                                    "hasHQInfo": "1", "hasExtInfo": "1"}, timeout=60)
             t = _tdx_parse(resp) if resp else {"close": None, "pct": None, "amount": None}
-            primary = (e.get("close"), f"东财行情API（{name}）")
-            secondary = (t.get("close"), "通达信MCP")
+            # 交叉验证：THS + 东财 + 通达信
+            primary = (t_close or e.get("close"), ths_src if t_close else f"东财行情API（{name}）")
+            secondary = (t.get("close") if not t_close else None, "通达信MCP")
             v = validate_number(primary, secondary, f"{name}收盘", rel_tol=0.001, abs_tol=0.2)
             amt_v = validate_number(
-                (e.get("amount"), f"东财行情API（{name}）"),
+                (t_amount or e.get("amount"), ths_src if t_amount else f"东财行情API（{name}）"),
                 (t.get("amount"), "通达信MCP"), f"{name}成交额", rel_tol=0.01)
-            pct = e.get("pct")
+            pct = t_pct if t_pct is not None else e.get("pct")
             out[name] = {
                 "code": e.get("code") or cfg["code"],
                 "close": v["value"],

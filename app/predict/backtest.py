@@ -26,14 +26,28 @@ class Backtest:
 
     # ---------- 交易日历 ----------
     def trading_days(self, end_date: str, count: int) -> list:
-        """从指数日线取最近 count 个交易日（含 end_date 向前）"""
+        """从指数日线取最近 count 个交易日（含 end_date 向前）
+        MCP 不可用时自动切换 ego browser 兜底"""
         resp = self.mcp.call(
             "tongzhou-fin-research_fin_data__get_kline_series",
             {"ticker": INDEX_TICKER, "market": "index",
              "end_date": end_date, "limit": count + 5})
         days = [p["time"] for p in _points(resp)]
         days.sort()
-        return days[-count:]
+        if days:
+            return days[-count:]
+        # MCP 兜底：ego browser 获取交易日历
+        log.info("MCP 交易日历为空，切换 ego browser")
+        try:
+            from .alt_data import EgoOpenPrices
+            from ..config import paths as get_paths
+            ego = EgoOpenPrices(get_paths()["data"] / "ego_kline.db")
+            days = ego.fetch_index_dates(end_date, limit=count + 5)
+            if days:
+                return days[-count:]
+        except Exception as e:
+            log.warning("ego 交易日历兜底失败: %s", str(e)[:100])
+        return []
 
     # ---------- 个股 K 线 ----------
     def _kline(self, ticker: str, end_date: str, start_date: str = None, limit: int = 20):

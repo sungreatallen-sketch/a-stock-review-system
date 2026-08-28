@@ -16,9 +16,57 @@ log = logging.getLogger("daily")
 
 
 def _kline_lookup_factory(cached):
+    """K线查询：MCP 优先，失败自动切 ego browser 兜底"""
     def lookup(ticker, end_date):
-        return cached.call("tongzhou-fin-research_fin_data__get_kline_series",
+        resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
                            {"ticker": ticker, "market": "a_stock", "end_date": end_date, "limit": 12})
+        # MCP 返回有效数据时直接用
+        points = ((resp or {}).get("data") or {}).get("points") or []
+        if points:
+            return resp
+        # MCP 失败：ego browser 兜底
+        code = ticker.split(".")[0]
+        try:
+            from .alt_data import _kline_url, NODE, BASE
+            import subprocess, json as _json
+            url = _kline_url(code, limit=12)
+            script = NODE.replace("BASE_PLACEHOLDER", _json.dumps(BASE)).replace(
+                "__JOBS__", _json.dumps([{"label": code, "url": url, "referer": BASE}], ensure_ascii=False))
+            proc = subprocess.run(["ego-browser", "nodejs"], input=script,
+                                  capture_output=True, text=True, timeout=30,
+                                  env={"PATH": "/Users/yage/.local/bin:/usr/bin:/bin:/usr/local/bin"})
+            for line in ((proc.stdout or "") + (proc.stderr or "")).splitlines():
+                line = line.strip()
+                if line.startswith("{") and line.endswith("}"):
+                    try:
+                        results = _json.loads(line)
+                        raw = results.get(code, "")
+                        if raw:
+                            j = _json.loads(raw)
+                            # ego K线格式: "date,open,close,high,low,volume,amount,amplitude"
+                            # 转为 MCP 格式: {"time":..., "open":..., "close":..., ...}
+                            klines = (j.get("data") or {}).get("klines") or []
+                            points = []
+                            for k in klines:
+                                parts = k.split(",")
+                                if len(parts) >= 7:
+                                    points.append({
+                                        "time": parts[0],
+                                        "open": float(parts[1]),
+                                        "close": float(parts[2]),
+                                        "high": float(parts[3]),
+                                        "low": float(parts[4]),
+                                        "volume": float(parts[5]),
+                                        "amount": float(parts[6]),
+                                    })
+                            if points:
+                                return {"data": {"points": points}}
+                    except Exception:
+                        continue
+        except Exception as e:
+            log.warning("ego K线兜底失败(%s): %s", ticker, str(e)[:100])
+        return resp
+
     return lookup
 
 

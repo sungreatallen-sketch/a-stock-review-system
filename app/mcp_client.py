@@ -121,6 +121,116 @@ class McpClient:
         return asyncio.run(self.call_tool(name, arguments, timeout))
 
 
+class ResilientMcpClient:
+    """WorkBuddy优先、通达信直连兜底的统一入口。
+
+    同舟K线是项目现有调用契约。WorkBuddy不可用时，把它转换成通达信tdx_kline，
+    并归一化为现有代码已使用的 data.points 格式。其他非通达信工具不会被伪造，
+    会继续显式抛错。
+    """
+
+    def __init__(self, workbuddy: McpClient, tdx=None):
+        self.workbuddy = workbuddy
+        self.tdx = tdx
+
+    @property
+    def url(self):
+        return getattr(self.workbuddy, "url", "")
+
+    @staticmethod
+    def _split_ticker(ticker: str):
+        raw = str(ticker or "").strip()
+        code = raw.split(".")[0]
+        suffix = raw.split(".", 1)[1].upper() if "." in raw else ""
+        return code, suffix
+
+    @classmethod
+    def _tdx_kline_args(cls, args: dict):
+        ticker = args.get("ticker") or ""
+        code, suffix = cls._split_ticker(ticker)
+        market = str(args.get("market") or "a_stock")
+        if market == "index":
+            setcode = "0" if suffix == "SZ" else "1"
+        elif code.startswith(("6", "9", "68")):
+            setcode = "1"
+        else:
+            setcode = "0"
+        try:
+            limit = max(1, min(1000, int(args.get("limit") or 20)))
+        except Exception:
+            limit = 20
+        return {"code": code, "setcode": setcode, "period": "4", "wantNum": limit}
+
+    @staticmethod
+    def _normalize_tdx_kline(resp: dict, end_date: str):
+        data = resp.get("structured") if isinstance(resp, dict) else None
+        rows = (data or {}).get("Rows") if isinstance(data, dict) else None
+        points = []
+        for row in rows or []:
+            raw_day = str(row.get("Data") or "")
+            if len(raw_day) != 8 or not raw_day.isdigit():
+                continue
+            day = f"{raw_day[:4]}-{raw_day[4:6]}-{raw_day[6:8]}"
+            if end_date and day > end_date:
+                continue
+
+            def num(key):
+                try:
+                    value = row.get(key)
+                    return float(value) if value not in (None, "") else None
+                except (TypeError, ValueError):
+                    return None
+
+            points.append({
+                "time": day,
+                "open": num("Open"),
+                "high": num("High"),
+                "low": num("Low"),
+                "close": num("Close"),
+                "volume": num("Volume"),
+                "amount": num("Amount"),
+            })
+        return {"data": {"points": points}, "source": "通达信MCP直连"}
+
+    async def list_tools(self, force: bool = False):
+        return await self.workbuddy.list_tools(force=force)
+
+    async def call_tool(self, name: str, arguments: dict = None, timeout: float = 90.0):
+        try:
+            return await self.workbuddy.call_tool(name, arguments, timeout)
+        except Exception as wb_error:
+            tool = str(name)
+            is_tdx_tool = tool.startswith("tdx-connector_")
+            is_kline_fallback = tool == "tongzhou-fin-research_fin_data__get_kline_series"
+            if not self.tdx or not (is_tdx_tool or is_kline_fallback):
+                raise
+            log.warning("WorkBuddy MCP失败，切换通达信直连: %s", str(wb_error)[:160])
+            if is_tdx_tool:
+                return await self.tdx.acall_tool(
+                    tool.removeprefix("tdx-connector_"), arguments, timeout
+                )
+            normalized = self._normalize_tdx_kline(
+                self.tdx.call_tool("tdx_kline", self._tdx_kline_args(arguments or {}), timeout),
+                (arguments or {}).get("end_date", "")
+            )
+            if not normalized["data"]["points"]:
+                raise RuntimeError("通达信直连K线为空，未伪造数据") from wb_error
+            return normalized
+
+    def call_tool_sync(self, name: str, arguments: dict = None, timeout: float = 90.0):
+        import asyncio
+        return asyncio.run(self.call_tool(name, arguments, timeout))
+
+
+def create_resilient_client():
+    """统一工厂：workflow / collector / sweep共用，避免兜底链分散漂移。"""
+    from .config import load_config
+    from .tdx_mcp_client import TdxMcpClient
+    cfg = load_config()["mcp"]
+    workbuddy = McpClient(cfg["proxy_url"], cfg.get("token", ""), cfg["workbuddy_log_dir"])
+    return ResilientMcpClient(workbuddy, TdxMcpClient())
+
+
 def parse_mcp_json(result: dict):
     """把 MCP 工具返回的文本解析成 JSON；失败则原样返回文本列表"""
     texts = result.get("items") or []

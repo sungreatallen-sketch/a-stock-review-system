@@ -41,6 +41,22 @@ def check_mcp():
         return {"status": "FAIL", "detail": f"{type(root).__name__}: {root}"[:240]}
 
 
+def check_tdx_direct():
+    try:
+        from app.tdx_mcp_client import TdxMcpClient
+        tools = TdxMcpClient().list_tools(force=True)
+        if not tools:
+            return {"status": "FAIL", "detail": "工具清单为空"}
+        return {"status": "OK", "tool_count": len(tools), "detail": "通达信OAuth直连"}
+    except Exception as e:
+        return {"status": "FAIL", "detail": f"{type(e).__name__}: {e}"[:240]}
+
+
 if __name__ == "__main__":
-    result = {"checked_at": date.today().isoformat(), "ths": check_ths(), "mcp": check_mcp()}
+    result = {
+        "checked_at": date.today().isoformat(),
+        "ths": check_ths(),
+        "mcp": check_mcp(),
+        "tdx_direct": check_tdx_direct(),
+    }
     print(json.dumps(result, ensure_ascii=False))

@@ -6,7 +6,7 @@ from datetime import date, timedelta
 
 from .ego_scraper import (EgoScraper, build_tasks, parse_index, parse_pool_counts,
                           parse_boards, parse_main_flow, parse_hsgt, parse_lhb)
-from .mcp_client import McpClient, parse_mcp_json
+from .mcp_client import parse_mcp_json
 from .validator import validate_number, validate_text
 from .config import load_config
 from .ths_client import get_ths_client, thscode_for_index
@@ -53,15 +53,19 @@ def _mcp_payload(resp):
 
 def _tdx_parse(resp: dict):
     """通达信 quotes 返回解析出 close/pct/amount"""
-    items = parse_mcp_json(resp)
-    if isinstance(items, list):
-        text = "\n".join(str(i) for i in items)
+    # 直连客户端会给出structured；WorkBuddy旧路径仍走text解析。
+    if isinstance(resp, dict) and isinstance(resp.get("structured"), dict):
+        j = resp["structured"]
     else:
-        text = str(items)
-    try:
-        j = json.loads(text[text.find("{"):text.rfind("}") + 1]) if "{" in text else {}
-    except Exception:
-        j = {}
+        items = parse_mcp_json(resp)
+        if isinstance(items, list):
+            text = "\n".join(str(i) for i in items)
+        else:
+            text = str(items)
+        try:
+            j = json.loads(text[text.find("{"):text.rfind("}") + 1]) if "{" in text else {}
+        except Exception:
+            j = {}
     hq = j.get("HQInfo") or {}
     now = hq.get("Now")
     amount = hq.get("Amount")
@@ -79,7 +83,8 @@ class Collector:
     def __init__(self):
         cfg = load_config()
         m = cfg["mcp"]
-        self.mcp = McpClient(m["proxy_url"], m.get("token", ""), m["workbuddy_log_dir"])
+        from .mcp_client import create_resilient_client
+        self.mcp = create_resilient_client()
         self.ego = EgoScraper()
         self.sources = []
         self.notes = []

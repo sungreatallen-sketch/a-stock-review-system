@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .env
+data/tdx_oauth.json
 logs/
 data/mcp_tools_full.json
 .DS_Store

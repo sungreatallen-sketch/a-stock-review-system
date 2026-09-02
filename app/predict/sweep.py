@@ -25,12 +25,10 @@ def make_v1_no_hot(max_amount=8e8, max_change=9.5):
 
 def _setup():
     from .cache import MCPCache, CachedMcp
-    from ..mcp_client import McpClient
     from ..config import load_config, paths
     logging.basicConfig(level=logging.WARNING)
-    cfg = load_config()
-    m = cfg["mcp"]
-    mcp = McpClient(m["proxy_url"], m.get("token", ""), m["workbuddy_log_dir"])
+    from ..mcp_client import create_resilient_client
+    mcp = create_resilient_client()
     p = paths()
     cached = CachedMcp(mcp, MCPCache(p["data"] / "mcp_cache.db"))
     return Backtest(cached), cached, p

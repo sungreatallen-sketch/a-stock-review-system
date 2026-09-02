@@ -12,12 +12,10 @@ log = logging.getLogger("workflow")
 
 
 def _get_cached_mcp():
-    from .mcp_client import McpClient
     from .predict.cache import MCPCache, CachedMcp
-    cfg = load_config()
-    m = cfg["mcp"]
-    mcp = McpClient(m["proxy_url"], m.get("token", ""), m["workbuddy_log_dir"])
     p = paths()
+    from .mcp_client import create_resilient_client
+    mcp = create_resilient_client()
     return CachedMcp(mcp, MCPCache(p["data"] / "mcp_cache.db"))
 
 

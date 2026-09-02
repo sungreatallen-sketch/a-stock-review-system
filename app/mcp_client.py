@@ -122,16 +122,18 @@ class McpClient:
 
 
 class ResilientMcpClient:
-    """WorkBuddy优先、通达信直连兜底的统一入口。
+    """WorkBuddy优先、通达信/同舟/Wind官方MCP直连兜底的统一入口。
 
     同舟K线是项目现有调用契约。WorkBuddy不可用时，把它转换成通达信tdx_kline，
-    并归一化为现有代码已使用的 data.points 格式。其他非通达信工具不会被伪造，
-    会继续显式抛错。
+    并归一化为现有代码已使用的 data.points 格式。其他直连不支持的现有工具
+    不会被伪造，会继续显式抛错。
     """
 
-    def __init__(self, workbuddy: McpClient, tdx=None):
+    def __init__(self, workbuddy: McpClient, tdx=None, tongzhou=None, wind=None):
         self.workbuddy = workbuddy
         self.tdx = tdx
+        self.tongzhou = tongzhou
+        self.wind = wind
 
     @property
     def url(self):
@@ -202,20 +204,48 @@ class ResilientMcpClient:
             tool = str(name)
             is_tdx_tool = tool.startswith("tdx-connector_")
             is_kline_fallback = tool == "tongzhou-fin-research_fin_data__get_kline_series"
-            if not self.tdx or not (is_tdx_tool or is_kline_fallback):
+            is_tongzhou_tool = tool.startswith("tongzhou-fin-research_")
+            is_wind_tool = tool.startswith("wind-finance_")
+            if not (self.tdx or self.tongzhou or self.wind) or not (
+                is_tdx_tool or is_tongzhou_tool or is_wind_tool
+            ):
                 raise
-            log.warning("WorkBuddy MCP失败，切换通达信直连: %s", str(wb_error)[:160])
+            log.warning("WorkBuddy MCP失败，尝试官方直连: %s", str(wb_error)[:160])
             if is_tdx_tool:
+                if not self.tdx:
+                    raise RuntimeError("通达信直连未配置") from wb_error
                 return await self.tdx.acall_tool(
                     tool.removeprefix("tdx-connector_"), arguments, timeout
                 )
-            normalized = self._normalize_tdx_kline(
-                self.tdx.call_tool("tdx_kline", self._tdx_kline_args(arguments or {}), timeout),
-                (arguments or {}).get("end_date", "")
-            )
-            if not normalized["data"]["points"]:
-                raise RuntimeError("通达信直连K线为空，未伪造数据") from wb_error
-            return normalized
+            if is_kline_fallback and self.tdx:
+                normalized = self._normalize_tdx_kline(
+                    self.tdx.call_tool("tdx_kline", self._tdx_kline_args(arguments or {}), timeout),
+                    (arguments or {}).get("end_date", "")
+                )
+                if not normalized["data"]["points"]:
+                    raise RuntimeError("通达信直连K线为空，未伪造数据") from wb_error
+                return normalized
+            if is_tongzhou_tool:
+                if not self.tongzhou:
+                    raise RuntimeError("同舟直连未配置或未授权") from wb_error
+                return await self._direct_call(
+                    self.tongzhou, "tongzhou-fin-research_", tool, arguments, timeout
+                )
+            if is_wind_tool:
+                if not self.wind:
+                    raise RuntimeError("Wind直连未配置（缺少WIND_API_KEY或OAuth凭据）") from wb_error
+                return await self._direct_call(
+                    self.wind, "wind-finance_", tool, arguments, timeout
+                )
+            raise RuntimeError(f"工具{name}没有可用直连兜底") from wb_error
+
+    async def _direct_call(self, client, prefix: str, name: str,
+                           arguments: dict, timeout: float):
+        direct_name = str(name).removeprefix(prefix)
+        available = client.list_tools()
+        if direct_name not in available:
+            raise RuntimeError(f"直连MCP缺少工具：{direct_name}（不伪造兜底）")
+        return await client.acall_tool(direct_name, arguments, timeout)
 
     def call_tool_sync(self, name: str, arguments: dict = None, timeout: float = 90.0):
         import asyncio
@@ -226,9 +256,16 @@ def create_resilient_client():
     """统一工厂：workflow / collector / sweep共用，避免兜底链分散漂移。"""
     from .config import load_config
     from .tdx_mcp_client import TdxMcpClient
+    from .direct_mcp_client import DirectMcpClient
     cfg = load_config()["mcp"]
     workbuddy = McpClient(cfg["proxy_url"], cfg.get("token", ""), cfg["workbuddy_log_dir"])
-    return ResilientMcpClient(workbuddy, TdxMcpClient())
+    root = Path(__file__).resolve().parent.parent
+    return ResilientMcpClient(
+        workbuddy,
+        TdxMcpClient(root / "data" / "tdx_oauth.json"),
+        DirectMcpClient(root / "data" / "tongzhou_oauth.json"),
+        DirectMcpClient(root / "data" / "wind_mcp.json"),
+    )
 
 
 def parse_mcp_json(result: dict):

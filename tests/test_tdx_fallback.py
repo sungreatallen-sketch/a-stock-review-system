@@ -29,6 +29,15 @@ class _FakeTdx:
         }
 
 
+class _FakeTongzhou:
+    def list_tools(self):
+        return {"doc_search__search_company_news": {}}
+
+    async def acall_tool(self, name, arguments=None, timeout=90):
+        assert name == "doc_search__search_company_news"
+        return {"isError": False, "items": ["ok"], "raw": ["ok"], "structured": {"ok": True}}
+
+
 def test_tdx_kline_fallback_normalizes_existing_contract():
     """同舟K线不可用时，TDX必须归一化成data.points且不混入未来日期。"""
     client = ResilientMcpClient(_DownClient(), _FakeTdx())
@@ -40,6 +49,29 @@ def test_tdx_kline_fallback_normalizes_existing_contract():
     assert [p["time"] for p in points] == ["2026-09-01", "2026-09-02"]
     assert points[-1]["close"] == 11.8
     assert resp["source"] == "通达信MCP直连"
+
+
+def test_tongzhou_tool_fallback_strips_connector_prefix():
+    """WorkBuddy失败时，同舟官方MCP应剥离连接器前缀后直连。"""
+    client = ResilientMcpClient(_DownClient(), _FakeTdx(), tongzhou=_FakeTongzhou())
+    resp = asyncio.run(client.call_tool(
+        "tongzhou-fin-research_doc_search__search_company_news",
+        {"stock_code": "000001"}, timeout=1,
+    ))
+    assert resp["structured"]["ok"] is True
+
+
+def test_missing_tongzhou_tool_does_not_fake_fallback():
+    """直连服务没有的工具必须显式失败，不能用其他工具或伪造结果顶替。"""
+    client = ResilientMcpClient(_DownClient(), _FakeTdx(), tongzhou=_FakeTongzhou())
+    try:
+        asyncio.run(client.call_tool(
+            "tongzhou-fin-research_fin_data__screen_stocks", {}, timeout=1,
+        ))
+    except RuntimeError as e:
+        assert "缺少工具" in str(e)
+    else:
+        raise AssertionError("同舟缺失工具不应静默fallback")
 
 
 def test_non_tdx_tool_does_not_fake_fallback():

@@ -6,6 +6,7 @@ import json
 import os
 import sys
 from datetime import date, timedelta
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -52,11 +53,27 @@ def check_tdx_direct():
         return {"status": "FAIL", "detail": f"{type(e).__name__}: {e}"[:240]}
 
 
+def check_direct_mcp(provider: str):
+    try:
+        from app.direct_mcp_client import DirectMcpClient
+        root = Path(__file__).resolve().parent.parent
+        path = (root / "data" / f"{provider}_oauth.json" if provider == "tongzhou"
+                else root / "data" / "wind_mcp.json")
+        tools = DirectMcpClient(path).list_tools(force=True)
+        if not tools:
+            return {"status": "FAIL", "detail": "工具清单为空"}
+        return {"status": "OK", "tool_count": len(tools), "detail": f"{provider}官方MCP直连"}
+    except Exception as e:
+        return {"status": "FAIL", "detail": f"{type(e).__name__}: {e}"[:240]}
+
+
 if __name__ == "__main__":
     result = {
         "checked_at": date.today().isoformat(),
         "ths": check_ths(),
         "mcp": check_mcp(),
         "tdx_direct": check_tdx_direct(),
+        "tongzhou_direct": check_direct_mcp("tongzhou"),
+        "wind_direct": check_direct_mcp("wind"),
     }
     print(json.dumps(result, ensure_ascii=False))

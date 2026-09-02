@@ -14,7 +14,9 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.config import paths
 from app.utils import is_trading_day, get_latest_trading_day
-from scripts.check_data_sources import check_mcp, check_ths, check_tdx_direct
+from scripts.check_data_sources import (
+    check_direct_mcp, check_mcp, check_ths, check_tdx_direct,
+)
 from scripts.send_feishu_alert import send_alert
 
 log = logging.getLogger("auto_review")
@@ -140,14 +142,15 @@ def run_auto_review():
 
     already_sent = final_report_ready(target) and report_sent(target)
     if not already_sent:
-        health = {"ths": check_ths(), "mcp": check_mcp(), "tdx_direct": check_tdx_direct()}
-        log.info("数据源健康: ths=%s mcp=%s tdx_direct=%s",
-                 health["ths"]["status"], health["mcp"]["status"], health["tdx_direct"]["status"])
-        source_ready = (
-            health["ths"]["status"] == "OK"
-            or health["mcp"]["status"] == "OK"
-            or health["tdx_direct"]["status"] == "OK"
-        )
+        health = {
+            "ths": check_ths(),
+            "mcp": check_mcp(),
+            "tdx_direct": check_tdx_direct(),
+            "tongzhou_direct": check_direct_mcp("tongzhou"),
+            "wind_direct": check_direct_mcp("wind"),
+        }
+        log.info("数据源健康: %s", {k: v["status"] for k, v in health.items()})
+        source_ready = any(v["status"] == "OK" for v in health.values())
         if not source_ready:
             _alert_once(
                 "all_sources_down",
@@ -155,21 +158,25 @@ def run_auto_review():
                 "自动复盘将在5分钟后重试；若仍失败请打开WorkBuddy检查/重连MCP。"
             )
             time.sleep(300)
-            health = {"ths": check_ths(), "mcp": check_mcp(), "tdx_direct": check_tdx_direct()}
-            source_ready = (
-                health["ths"]["status"] == "OK"
-                or health["mcp"]["status"] == "OK"
-                or health["tdx_direct"]["status"] == "OK"
-            )
+            health = {
+                "ths": check_ths(),
+                "mcp": check_mcp(),
+                "tdx_direct": check_tdx_direct(),
+                "tongzhou_direct": check_direct_mcp("tongzhou"),
+                "wind_direct": check_direct_mcp("wind"),
+            }
+            source_ready = any(v["status"] == "OK" for v in health.values())
             log.info("数据源重试: ths=%s mcp=%s", health["ths"]["status"], health["mcp"]["status"])
             if not source_ready:
                 log.error("数据源重试仍失败，跳过自动复盘")
                 return
         if health["mcp"]["status"] != "OK":
-            if health["tdx_direct"]["status"] == "OK":
+            direct_ok = any(health[k]["status"] == "OK" for k in
+                            ("tdx_direct", "tongzhou_direct", "wind_direct"))
+            if direct_ok:
                 _alert_once(
-                    "mcp_down_tdx_ok",
-                    "⚠️ WorkBuddy MCP连接失败，已切换通达信OAuth直连。\n"
+                    "mcp_down_direct_ok",
+                    "⚠️ WorkBuddy MCP连接失败，已切换官方MCP直连兜底。\n"
                     "复盘可继续；方便时请在WorkBuddy里重连MCP以恢复完整兜底链。"
                 )
             else:

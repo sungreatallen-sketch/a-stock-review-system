@@ -5,7 +5,7 @@
 # 规则变更：用户提出新要求 → 更新本文件 + RULES.md → git 提交。
 # ============================================================
 meta:
-  version: "1.7"
+  version: "1.8"
   effective_date: "2026-09-02"
   issue_log: "docs/问题与修复记录.md (ISSUE-001 v1.1)"
   status: "权威规则（用户确认后生效）"
@@ -262,8 +262,8 @@ rules:
     category: 数据源健康
     priority: hard
     title: "推送前多源健康检查"
-    description: "自动复盘前必须检查同花顺API、WorkBuddy MCP和通达信OAuth直连；任一可用即执行，全部不可用则飞书告警并重试；单源降级也必须飞书告知"
-    enforcement: "scripts/check_data_sources.py 输出结构化状态；本地MCP与通达信直连禁止经过VPN/系统代理；auto_review.py 做门禁、重试和同日告警去重"
+    description: "自动复盘前必须检查同花顺API、WorkBuddy MCP、通达信/同舟/Wind官方直连；任一可用即执行，全部不可用则飞书告警并重试；单源降级也必须飞书告知"
+    enforcement: "scripts/check_data_sources.py 输出结构化状态；本地MCP与官方直连禁止经过VPN/系统代理；auto_review.py 做门禁、重试和同日告警去重"
     on_violation: "静默跳过或静默降级视为违规"
 
   # ---------------- K2. 通达信直连兜底（v1.7 新增） ----------------
@@ -275,6 +275,16 @@ rules:
     enforcement: "create_resilient_client()为workflow/collector/sweep统一入口；tdx_oauth.json权限600且禁止提交；所有直连请求trust_env=False；401自动刷新一次"
     implementation_status: "已实现（CHG-048/ISSUE-033）"
     on_violation: "静默伪造数据或绕过统一兜底工厂视为违规"
+
+  # ---------------- K3. 同舟/Wind官方直连兜底（v1.8 新增） ----------------
+  - id: R34
+    category: 数据源弹性
+    priority: hard
+    title: "同舟/Wind官方MCP直连与凭据安全"
+    description: "WorkBuddy聚合代理失败时，同舟工具自动走同舟官方OAuth直连；Wind在配置WIND_API_KEY或OAuth凭据后走官方直连。K线仍优先通达信直连，因为同舟当前工具集无K线"
+    enforcement: "create_resilient_client()统一注入TDX/Tongzhou/Wind；直连缺失工具必须显式失败；oauth配置600且gitignore；直连禁用系统代理；401自动刷新一次"
+    implementation_status: "同舟已授权并验证16工具；Wind待用户配置WIND_API_KEY或OAuth凭据"
+    on_violation: "解密WorkBuddy凭据、提交token、伪造缺失工具结果均视为违规"
 
   # ---------------- I. 因子管理（v1.2 新增） ----------------
   - id: R28

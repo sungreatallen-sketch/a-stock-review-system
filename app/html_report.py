@@ -199,7 +199,7 @@ function boardTable(rows){
       <div class="note" style="margin-top:6px"><b>逻辑</b>：${x['reason']||x['逻辑']||''}</div>
       <div class="warn" style="margin-top:4px"><b>风险</b>：${x['risk']||'无'}</div>
     </div>`).join('');
-    box.innerHTML = `${p.market_view?`<div class="warn" style="margin-bottom:10px">📌 市场判断：${p.market_view}</div>`:''}<div class="grid">${heads}</div><div class="note">${p.strategy||''}｜参考买入价 = 收盘价，次日开盘后卖出</div>`;
+    box.innerHTML = `${p.market_view?`<div class="warn" style="margin-bottom:10px">📌 市场判断：${p.market_view}</div>`:''}<div class="grid">${heads}</div><div class="note">${p.strategy||''}｜T日收盘价仅作参考；T+1收盘买入，T+2收盘卖出</div>`;
   } else {
     box.innerHTML = p.status || '预测引擎开发中（M2/M3 上线）';
   }
@@ -214,11 +214,11 @@ function boardTable(rows){
   const box = document.getElementById('trackBox');
   let html = '';
   if (settle && settle.settled) {
-    html = `<div class="warn" style="margin-bottom:8px">昨日推荐已结算：${settle.settled} 只（${settle.sell_date||''} 开盘价）</div>`;
+    html = `<div class="warn" style="margin-bottom:8px">昨日推荐已结算：${settle.settled} 只（T+1收盘买入，T+2收盘卖出）</div>`;
   }
   if (stats && stats.count) {
     html += `<div class="emo">
-      <div class="b"><div class="v">${stats.win_rate??'-'}%</div><div class="l">累计命中率(昨收→今收)</div></div>
+      <div class="b"><div class="v">${stats.win_rate??'-'}%</div><div class="l">累计命中率(T+1收盘→T+2收盘)</div></div>
       <div class="b"><div class="v">${stats.avg_ret??'-'}</div><div class="l">平均收益%</div></div>
       <div class="b"><div class="v">${stats.best??'-'}</div><div class="l">最佳%</div></div>
       <div class="b"><div class="v">${stats.count??'-'}</div><div class="l">已结算笔数</div></div></div>`;
@@ -233,7 +233,7 @@ function boardTable(rows){
       // 已结算：显示买卖价格和收益
       const wins = settledRows.filter(r => (r.ret||0) > 0).length;
       html += `<div class="tbl-wrap" style="margin-top:10px"><table>
-        <tr><th>日期</th><th>标的</th><th>昨收</th><th>今收</th><th>收益</th></tr>` +
+        <tr><th>推荐日</th><th>标的</th><th>T+1买入收盘</th><th>T+2卖出收盘</th><th>收益</th></tr>` +
         settledRows.map(r=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.buy}</td><td>${r.sell_close??'-'}</td>
           <td class="${cls(r.ret)}">${r.ret>=0?'+':''}${r.ret}%</td></tr>`).join('') + `</table>
         <div class="note">命中 ${wins}/${settledRows.length}</div></div>`;
@@ -243,7 +243,7 @@ function boardTable(rows){
         <tr><th>日期</th><th>标的</th><th>昨收</th><th>今收</th><th>收益</th></tr>` +
         predTargets.map(t=>`<tr><td>${predDate}</td><td>${t.name||''}</td><td>${t['参考买入价(收盘)']||'-'}</td><td>—</td>
           <td>待结算</td></tr>`).join('') + `</table>
-        <div class="note">昨日推荐待结算（次日收盘后自动结算）</div></div>`;
+        <div class="note">昨日推荐待结算；执行窗口为T+1收盘买入，T+2收盘卖出</div></div>`;
     }
   } else if (stats && stats.count) {
     // 兜底：如果没有 latest_prediction，用旧逻辑
@@ -252,7 +252,7 @@ function boardTable(rows){
       const latest = rows[0].date;
       const dayRows = rows.filter(r => r.date === latest);
       html += `<div class="tbl-wrap" style="margin-top:10px"><table>
-        <tr><th>日期</th><th>标的</th><th>昨收</th><th>今收</th><th>收益</th></tr>` +
+        <tr><th>推荐日</th><th>标的</th><th>T+1买入收盘</th><th>T+2卖出收盘</th><th>收益</th></tr>` +
         dayRows.map(r=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.buy}</td><td>${r.sell_close??'-'}</td>
           <td class="${cls(r.ret)}">${r.ret>=0?'+':''}${r.ret}%</td></tr>`).join('') + `</table>
         <div class="note">仅展示最近一天推荐</div></div>`;

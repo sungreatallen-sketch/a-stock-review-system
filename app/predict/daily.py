@@ -18,13 +18,13 @@ log = logging.getLogger("daily")
 def _kline_lookup_factory(cached):
     """K线查询：THS 优先 → MCP → ego browser 兜底"""
     def lookup(ticker, end_date):
-        from .ths_client import get_ths_client
+        from ..ths_client import get_ths_client
         ths = get_ths_client()
         # THS 优先（REST API 直连，不经过 WorkBuddy）
         try:
             thscode = f"{ticker}.SH" if ticker.startswith("6") else f"{ticker}.SZ"
             from datetime import date as _d, timedelta as _td
-            end = _d.fromisoformat(end_date)
+            end = _d.fromisoformat(str(end_date))
             start = end - _td(days=14)
             raw = ths.kline(thscode, start, end)
             if raw:
@@ -43,11 +43,14 @@ def _kline_lookup_factory(cached):
         except Exception as e:
             log.warning("THS K线 %s 失败: %s", ticker, str(e)[:100])
         # MCP 兜底
-        resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
-                           {"ticker": ticker, "market": "a_stock", "end_date": end_date, "limit": 12})
-        points = ((resp or {}).get("data") or {}).get("points") or []
-        if points:
-            return resp
+        try:
+            resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
+                               {"ticker": ticker, "market": "a_stock", "end_date": end_date, "limit": 12})
+            points = ((resp or {}).get("data") or {}).get("points") or []
+            if points:
+                return resp
+        except Exception as e:
+            log.warning("MCP K线 %s 失败: %s", ticker, str(e)[:100])
         # MCP 失败：ego browser 兜底
         code = ticker.split(".")[0]
         try:
@@ -129,6 +132,31 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
     from ..config import paths as _paths
     _existing = Tracker(_paths()["data"]).get_prediction(t)
     if _existing:
+        # R11 锁定标的，但允许只补齐缺失的 T 日参考价；绝不替换标的或重新研判。
+        existing_kline_lookup = _kline_lookup_factory(cached)
+        price_changed = False
+        for pick in _existing.get("targets") or []:
+            if pick.get("参考买入价(收盘)"):
+                continue
+            code = (pick.get("code") or "").split(".")[0]
+            resp = existing_kline_lookup(code, t)
+            pt = next((p for p in ((resp or {}).get("data") or {}).get("points") or []
+                       if p.get("time") == t), None)
+            if pt and pt.get("close"):
+                pick["参考买入价(收盘)"] = float(pt["close"])
+                price_changed = True
+        if price_changed:
+            log.info("R11: %s 已锁定标的，仅补齐缺失参考价", t)
+            try:
+                Tracker(_paths()["data"]).record_prediction(_existing)
+            except Exception:
+                log.exception("R11补价后写回失败")
+        for tgt in _existing.get("targets") or []:
+            tgt["hold"] = "T+1收盘买入，T+2收盘卖出"
+        try:
+            Tracker(_paths()["data"]).record_prediction(_existing)
+        except Exception:
+            log.exception("R11执行窗口写回失败")
         log.info("R11: %s 已有预测，直接复用（不覆盖）", t)
         return _existing
     pool = CandidatePool(cached).build(t)
@@ -208,12 +236,12 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
                 for k in ("hold", "持仓", "持仓时间"):
                     if tgt.get(k) and not tgt.get("hold"):
                         tgt["hold"] = tgt[k]
-                # 缺省兜底：基于真实买入价（-3% 止损 / +3% 目标 / T+1）
+                # 参考价是T日收盘价；真实执行窗口是T+1收盘买入、T+2收盘卖出。
                 buy = tgt.get("参考买入价(收盘)")
                 if buy:
                     tgt.setdefault("stop_loss", round(buy * 0.97, 2))
                     tgt.setdefault("sell_target", round(buy * 1.03, 2))
-                    tgt.setdefault("hold", "T+1（次日开盘卖出）")
+                    tgt.setdefault("hold", "T+1收盘买入，T+2收盘卖出")
         except Exception as e:
             log.exception("LLM 研判失败，回退规则结果")
             llm_result = {"market_view": _fallback_market_view(market), "targets": []}
@@ -222,8 +250,13 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
                         "参考买入价(收盘)": p.get("参考买入价(收盘)"),
                         "量比": p.get("量比")} for p in top5[:3]]
 
+    for tgt in targets:
+        # 执行窗口是用户确认的硬约束；历史预测里的旧文案也要统一，避免语义漂移。
+        tgt["hold"] = "T+1收盘买入，T+2收盘卖出"
+
     return {
         "date": t,
+        "settlement_rule": "T+1收盘买入，T+2收盘卖出",
         "strategy": "7-10日强势板块 + 个股强势 + 资金活跃 + 量比<2.0过滤 + 消息面 + LLM研判",
         "strategy_version": STRATEGY_VERSION,
         "filtered_out": strat.filtered,

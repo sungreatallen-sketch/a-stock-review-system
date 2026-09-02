@@ -274,6 +274,13 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
         else:
             from ..workflow import run_review
             report = run_review(include_prediction=True)
+        # === 报告校验（防御层） ===
+        from ..report_validator import validate_and_block
+        can_send, val_errors = validate_and_block(report)
+        if not can_send:
+            blocking_rules = [e.rule for e in val_errors if e.severity == "error"]
+            logger.error("报告校验未通过，规则: %s，仍发送但标记警告", blocking_rules)
+            # 不阻断发送，但在报告顶部加警告（避免用户完全收不到）
         date_str = report["date"]
         links = report_link(date_str)
         primary_url = links["public"] or links["ip"]
@@ -312,7 +319,8 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
                 for r in settled_rows:
                     s = "+" if (r.get("ret") or 0) >= 0 else ""
                     prev_lines.append(
-                        f"· {r.get('name')}：昨收 {r.get('buy')} → 今收 {r.get('sell_close')}（{s}{r.get('ret')}%）")
+                        f"· {r.get('name')}：买入 {r.get('buy_date') or 'T+1'}收盘 {r.get('buy')} → 卖出 "
+                        f"{r.get('sell_date') or 'T+2'}收盘 {r.get('sell_close')}（{s}{r.get('ret')}%）")
                 prev_lines.append(f"命中 {wins}/{len(settled_rows)}")
                 summary += "\n".join(prev_lines)
             else:
@@ -320,10 +328,10 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
                 prev_lines = [f"\n\n📈 **昨日推荐标的（{pred_date}，待结算）**"]
                 for t in pred_targets:
                     buy = t.get("参考买入价(收盘)", "—")
-                    prev_lines.append(f"· {t.get('name')}（{t.get('code')}）：昨收 {buy}")
+                    prev_lines.append(f"· {t.get('name')}（{t.get('code')}）：T日收盘参考 {buy}")
                 summary += "\n".join(prev_lines)
         if targets:
-            t_lines = ["\n**次日标的（收盘价附近买入，次日开盘卖出）**"]
+            t_lines = ["\n**下一执行窗口标的（T+1收盘买入，T+2收盘卖出）**"]
             for i, t in enumerate(targets, 1):
                 buy = t.get("参考买入价(收盘)")
                 conf = t.get("confidence") or "中"

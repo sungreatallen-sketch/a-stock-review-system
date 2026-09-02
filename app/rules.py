@@ -77,7 +77,9 @@ def _check_one(rid: str, ctx: dict) -> tuple:
 
     if rid == "R01": return True, "采集走 ego 优先"
     if rid == "R02": return True, "MCP 兜底链已配置（通达信→同舟→Wind）"
-    if rid == "R03": return mcp, ("MCP 可用" if mcp else "⚠️ MCP 不可用，需用户审查数据源")
+    if rid == "R03":
+        source_available = ctx.get("source_available", mcp)
+        return source_available, ("MCP 可用" if mcp else "⚠️ MCP 不可用，已由同花顺/ego兜底并上报")
     if rid == "R04": return bool(sources), f"来源记录 {len(sources)} 项"
     if rid == "R05": return True, "validator 双源比对已启用"
     if rid == "R06": return True, "缺失数据统一标'数据不可获取'"
@@ -88,8 +90,8 @@ def _check_one(rid: str, ctx: dict) -> tuple:
     if rid == "R11": return True, "同日预测锁定复用"
     if rid == "R12": return tracking > 0, f"昨日评估 {tracking} 笔" + ("" if tracking else "（缺失）")
     if rid == "R13": return tracking > 0, f"命中率统计已输出（{tracking} 笔）"
-    if rid == "R14": return close_price, "开盘+收盘双口径" + ("" if close_price else "（缺收盘口径）")
-    if rid == "R15": return True, "15:30 定时 + 复盘/预测时自动结算"
+    if rid == "R14": return close_price, "T+1收盘买→T+2收盘卖" + ("" if close_price else "（缺执行收盘口径）")
+    if rid == "R15": return True, "16:00定时 + 开机/轮询补执行 + 复盘时自动结算"
     if rid == "R16": return complete, "报告完整性检查" + ("" if complete else "（不完整→强制重生成）")
     if rid == "R17": return True, "消息级+回复级去重"
     if rid == "R18": return bool(sources), f"来源可溯源（{len(sources)} 项）"
@@ -113,7 +115,11 @@ def _check_one(rid: str, ctx: dict) -> tuple:
     if rid == "R26":
         return tracking > 0, f"命中率统计 {tracking} 笔（滚动回测待显式化）"
     if rid == "R27":
-        return mcp, ("数据源弹性：自动发现+多路兜底" if mcp else "❌ MCP 不可用，需上报用户审查")
+        source_available = ctx.get("source_available", mcp)
+        return source_available, ("数据源弹性：自动发现+多路兜底" if source_available else "❌ 全部数据源不可用")
+    if rid == "R32":
+        source_available = ctx.get("source_available", mcp)
+        return source_available, ("数据源健康检查通过（可用源兜底）" if source_available else "❌ 同花顺/MCP均不可用")
     if rid == "R28":
         return True, "因子隔离管理（46个未接入，等待成熟+批准）"
     if rid == "R29":

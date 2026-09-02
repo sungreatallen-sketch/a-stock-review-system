@@ -82,7 +82,9 @@ def build_summary(d: dict) -> str:
             prev_lines = [f"\n\n📈 **昨日推荐标的（{pred_date}）**"]
             for r in settled_rows:
                 s = "+" if (r.get("ret") or 0) >= 0 else ""
-                prev_lines.append(f"· {r.get('name')}：昨收 {r.get('buy')} → 今收 {r.get('sell_close')}（{s}{r.get('ret')}%）")
+                prev_lines.append(
+                    f"· {r.get('name')}：买入 {r.get('buy_date') or 'T+1'}收盘 {r.get('buy')} → 卖出 "
+                    f"{r.get('sell_date') or 'T+2'}收盘 {r.get('sell_close')}（{s}{r.get('ret')}%）")
             prev_lines.append(f"命中 {wins}/{len(settled_rows)}")
             summary += "\n".join(prev_lines)
         else:
@@ -90,11 +92,11 @@ def build_summary(d: dict) -> str:
             prev_lines = [f"\n\n📈 **昨日推荐标的（{pred_date}，待结算）**"]
             for t in pred_targets:
                 buy = t.get("参考买入价(收盘)", "—")
-                prev_lines.append(f"· {t.get('name')}（{t.get('code')}）：昨收 {buy}")
+                prev_lines.append(f"· {t.get('name')}（{t.get('code')}）：T日收盘参考 {buy}")
             summary += "\n".join(prev_lines)
     # 今日预测
     if targets:
-        t_lines = ["\n**次日标的（收盘价附近买入，次日开盘卖出）**"]
+        t_lines = ["\n**下一执行窗口标的（T+1收盘买入，T+2收盘卖出）**"]
         for i, t in enumerate(targets, 1):
             buy = t.get("参考买入价(收盘)")
             conf = t.get("confidence") or "中"

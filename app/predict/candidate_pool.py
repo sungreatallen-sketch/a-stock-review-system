@@ -1,7 +1,8 @@
 """候选池：7-10日强势板块 + 板块内强势个股 + 全市场资金活跃标的 + 涨停股
-数据：同舟 MCP（rank_industry_fund_flows / rank_securities / screen_stocks）
+数据：同舟 MCP → THS 兜底
 """
 import logging
+from ..ths_client import get_ths_client
 
 log = logging.getLogger("candidate_pool")
 
@@ -88,11 +89,15 @@ class CandidatePool:
         except Exception as e:
             log.warning("ego 10日板块失败: %s", str(e)[:120])
         # 兜底：同舟 20日资金流（接近7-10日窗口）
-        self._sector_window = "20日资金流(同舟兜底)"
-        resp = self.mcp.call(
-            "tongzhou-fin-research_fin_data__rank_industry_fund_flows",
-            {"trade_date": trade_date, "direction": "all", "rank_window": 20, "limit": 31})
-        rankings = ((resp or {}).get("data") or {}).get("rankings") or []
+        rankings = []
+        try:
+            self._sector_window = "20日资金流(同舟兜底)"
+            resp = self.mcp.call(
+                "tongzhou-fin-research_fin_data__rank_industry_fund_flows",
+                {"trade_date": trade_date, "direction": "all", "rank_window": 20, "limit": 31})
+            rankings = ((resp or {}).get("data") or {}).get("rankings") or []
+        except Exception as e:
+            log.warning("MCP 板块资金流失败: %s", str(e)[:100])
         rows = []
         for r in rankings:
             w20 = (r.get("window_metrics") or {}).get("20d") or {}
@@ -105,7 +110,34 @@ class CandidatePool:
         rows.sort(key=lambda x: (x["main_net_inflow"] or -1e18), reverse=True)
         for i, r in enumerate(rows[:n], 1):
             r["sector_rank"] = i
-        return rows[:n]
+        if rows:
+            return rows[:n]
+        # THS 兜底：用同花顺行业指数涨幅排名
+        log.info("MCP 板块数据为空，使用 THS 行业指数兜底")
+        self._sector_window = "THS行业指数"
+        ths = get_ths_client()
+        try:
+            ths_ind = ths.ths_index_list(tag="industry")
+            sectors = []
+            for idx_item in ths_ind[:30]:
+                snap = ths.ths_index_snapshot(idx_item.get("thscode", ""))
+                pct = snap.get("price_change_ratio_pct")
+                if pct is not None:
+                    sectors.append({
+                        "industry": idx_item.get("name", ""),
+                        "industry_code": idx_item.get("thscode", ""),
+                        "change_ratio_20d": pct,
+                        "sector_rank": 0,
+                    })
+            sectors.sort(key=lambda x: (x.get("change_ratio_20d") or -999), reverse=True)
+            for i, s in enumerate(sectors[:n], 1):
+                s["sector_rank"] = i
+            if sectors:
+                self._add_source = lambda s: None  # placeholder
+                return sectors[:n]
+        except Exception as e:
+            log.warning("THS 板块兜底失败: %s", str(e)[:100])
+        return []
 
     def _sector_stocks(self, sector: dict, n: int = PER_SECTOR_N) -> list:
         """板块内强势股：ego 板块成分股优先，同舟 rank_securities 兜底"""
@@ -114,31 +146,145 @@ class CandidatePool:
             try:
                 rows = self.ego.sector_stocks(bk, n)
                 if rows:
-                    for r in rows:
-                        r["industry"] = sector.get("industry") or sector.get("name")
-                    return rows
+                    # 检查数据质量：至少有一个有效收盘价
+                    has_valid = any(_safe_float(r.get("close")) for r in rows)
+                    if has_valid:
+                        for r in rows:
+                            r["industry"] = sector.get("industry") or sector.get("name")
+                        return rows
+                    log.info("ego 板块数据无效（无收盘价），尝试 THS 兜底")
             except Exception as e:
                 log.warning("ego 板块成分股失败(%s): %s", bk, str(e)[:120])
-        resp = self.mcp.call(
-            "tongzhou-fin-research_fin_data__rank_securities",
-            {"trade_date": sector.get("trade_date") or "", "sort_by": "change_ratio",
-             "industry": sector.get("industry"), "limit": 15})
-        rankings = ((resp or {}).get("data") or {}).get("rankings") or []
-        return [_clean_rank_row(r) for r in rankings[:n]]
+        rankings = []
+        try:
+            resp = self.mcp.call(
+                "tongzhou-fin-research_fin_data__rank_securities",
+                {"trade_date": sector.get("trade_date") or "", "sort_by": "change_ratio",
+                 "industry": sector.get("industry"), "limit": 15})
+            rankings = ((resp or {}).get("data") or {}).get("rankings") or []
+        except Exception as e:
+            log.warning("MCP 板块个股失败: %s", str(e)[:100])
+        if rankings:
+            return [_clean_rank_row(r) for r in rankings[:n]]
+        # THS 兜底：用行业指数成分股 + 快照
+        ths = get_ths_client()
+        industry_name = sector.get("industry") or sector.get("name") or ""
+        try:
+            # 用行业名称匹配 THS 行业指数
+            ths_ind = ths.ths_index_list(tag="industry")
+            matched_code = None
+            for idx in ths_ind:
+                if industry_name and (industry_name in (idx.get("name") or "") or (idx.get("name") or "") in industry_name):
+                    matched_code = idx.get("thscode")
+                    break
+            if not matched_code:
+                # 模糊匹配：取第一个包含关键词的
+                for idx in ths_ind:
+                    name = idx.get("name") or ""
+                    if any(kw in name for kw in [industry_name[:2]] if len(industry_name) >= 2):
+                        matched_code = idx.get("thscode")
+                        break
+            if not matched_code:
+                return []
+            constituents = ths.index_constituents(matched_code)
+            if not constituents:
+                return []
+            # 用K线获取最近交易日数据
+            from datetime import date as _d, timedelta as _td
+            today = _d.today()
+            start = today - _td(days=7)
+            rows = []
+            for c in constituents[:n*3]:
+                tc = c.get("thscode", "")
+                ticker = tc.split(".")[0]
+                try:
+                    kline = ths.kline(tc, start, today)
+                    if kline and len(kline) >= 2:
+                        last = kline[-1]
+                        prev = kline[-2]
+                        close = last.get("close_price")
+                        prev_close = prev.get("close_price")
+                        chg = round((close / prev_close - 1) * 100, 2) if close and prev_close else None
+                        rows.append({
+                            "ticker": ticker,
+                            "name": c.get("stock_name") or c.get("name"),
+                            "close": close,
+                            "change_ratio": chg,
+                            "amount": last.get("turnover"),
+                            "volume": last.get("volume"),
+                            "industry": sector.get("industry") or sector.get("name"),
+                        })
+                except Exception:
+                    pass
+            rows.sort(key=lambda x: (x.get("change_ratio") or -999), reverse=True)
+            return rows[:n]
+        except Exception as e:
+            log.warning("THS 板块成分股兜底失败(%s): %s", industry_code, str(e)[:100])
+            return []
 
     def _top_amount(self, trade_date: str, n: int = TOP_AMOUNT_N) -> list:
-        resp = self.mcp.call(
-            "tongzhou-fin-research_fin_data__rank_securities",
-            {"trade_date": trade_date, "sort_by": "amount", "limit": n})
-        rankings = ((resp or {}).get("data") or {}).get("rankings") or []
-        return [_clean_rank_row(r) for r in rankings]
+        rankings = []
+        try:
+            resp = self.mcp.call(
+                "tongzhou-fin-research_fin_data__rank_securities",
+                {"trade_date": trade_date, "sort_by": "amount", "limit": n})
+            rankings = ((resp or {}).get("data") or {}).get("rankings") or []
+        except Exception as e:
+            log.warning("MCP 成交额排名失败: %s", str(e)[:100])
+        if rankings:
+            return [_clean_rank_row(r) for r in rankings]
+        # THS 兜底：全市场快照按成交额排序
+        ths = get_ths_client()
+        try:
+            all_snaps = ths.snapshot_paged(limit=500, offset=0)
+            if all_snaps:
+                all_snaps.sort(key=lambda x: (x.get("turnover") or 0), reverse=True)
+                rows = []
+                for s in all_snaps[:n]:
+                    ticker = s.get("ticker") or s.get("thscode", "").split(".")[0]
+                    rows.append({
+                        "ticker": ticker,
+                        "name": "",
+                        "close": s.get("last_price"),
+                        "change_ratio": s.get("price_change_ratio_pct"),
+                        "amount": s.get("turnover"),
+                    })
+                return rows
+        except Exception as e:
+            log.warning("THS 全市场快照兜底失败: %s", str(e)[:100])
+        return []
 
     def _limit_up(self, trade_date: str, n: int = 50) -> list:
-        resp = self.mcp.call(
-            "tongzhou-fin-research_fin_data__screen_stocks",
-            {"trade_date": trade_date, "status": "limit_up", "limit": n})
-        secs = ((resp or {}).get("data") or {}).get("securities") or []
-        return [_clean_rank_row(r) for r in secs]
+        secs = []
+        try:
+            resp = self.mcp.call(
+                "tongzhou-fin-research_fin_data__screen_stocks",
+                {"trade_date": trade_date, "status": "limit_up", "limit": n})
+            secs = ((resp or {}).get("data") or {}).get("securities") or []
+        except Exception as e:
+            log.warning("MCP 涨停筛选失败: %s", str(e)[:100])
+        if secs:
+            return [_clean_rank_row(r) for r in secs]
+        # THS 兜底：涨停池
+        ths = get_ths_client()
+        try:
+            ths_lup = ths.limit_up_pool(trade_date)
+            if ths_lup:
+                rows = []
+                for it in ths_lup:
+                    ticker = (it.get("thscode") or "").split(".")[0]
+                    rows.append({
+                        "ticker": ticker,
+                        "name": it.get("stock_name"),
+                        "limit_status": "涨停",
+                        "change_ratio": it.get("price_change_ratio_pct"),
+                        "close": it.get("last_price"),
+                        "amount": it.get("turnover"),
+                    })
+                return rows
+        except Exception as e:
+            log.warning("THS 涨停池兜底失败: %s", str(e)[:100])
+        return []
 
     def build(self, trade_date: str) -> dict:
         """构建候选池，返回 {candidates, sectors, meta}"""

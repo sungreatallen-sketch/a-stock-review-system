@@ -183,13 +183,58 @@ class Collector:
         v_dt = validate_number((dt.get("count"), "东财跌停池API"), (tdd_count, "通达信MCP选股(跌停)"),
                                "跌停家数", rel_tol=0.1, abs_tol=2)
 
+        # THS 兜底：如果 ego 和 MCP 都拿不到数据，用 THS 涨跌停池
+        ths = get_ths_client()
+        ths_lup_count = None
+        ths_ldown_count = None
+        ths_lbreak_count = None
+        ths_max_boards = None
+        ths_board_dist = None
+        if not v_zt["value"] or not v_dt["value"]:
+            try:
+                ths_lup = ths.limit_up_pool(report_date)
+                ths_lup_count = len(ths_lup) if ths_lup else None
+                # 计算连板分布
+                if ths_lup:
+                    boards = {}
+                    for it in ths_lup:
+                        b = it.get("continuous_boards") or it.get("boards") or 1
+                        boards[str(b)] = boards.get(str(b), 0) + 1
+                    if boards:
+                        ths_max_boards = max(int(k) for k in boards)
+                        ths_board_dist = boards
+            except Exception:
+                pass
+            try:
+                ths_ldown = ths.limit_down_pool(report_date)
+                ths_ldown_count = len(ths_ldown) if ths_ldown else None
+            except Exception:
+                pass
+            try:
+                ths_lbreak = ths.limit_break_pool(report_date)
+                ths_lbreak_count = len(ths_lbreak) if ths_lbreak else None
+            except Exception:
+                pass
+            if ths_lup_count:
+                self._add_source("同花顺API(涨停池)")
+            if ths_ldown_count:
+                self._add_source("同花顺API(跌停池)")
+            if ths_lbreak_count:
+                self._add_source("同花顺API(炸板池)")
+
+        final_zt = v_zt["value"] or ths_lup_count
+        final_dt = v_dt["value"] or ths_ldown_count
+        final_zb = zb.get("count") or ths_lbreak_count
+        final_boards = zt.get("max_boards") or ths_max_boards
+        final_dist = zt.get("board_dist") or ths_board_dist
+
         emotion = {
-            "date": zt.get("qdate"),
-            "limit_up": v_zt["value"],
-            "limit_down": v_dt["value"],
-            "max_boards": zt.get("max_boards"),
-            "board_dist": zt.get("board_dist"),
-            "break_count": zb.get("count"),
+            "date": zt.get("qdate") or report_date,
+            "limit_up": final_zt,
+            "limit_down": final_dt,
+            "max_boards": final_boards,
+            "board_dist": final_dist,
+            "break_count": final_zb,
             "validated": v_zt["validated"] and v_dt["validated"],
             "sources": list(dict.fromkeys(v_zt["sources"] + v_dt["sources"] + ["东财涨停池API", "东财跌停池API", "东财炸板池API"])),
             "notes": [
@@ -208,6 +253,27 @@ class Collector:
     def _collect_sectors(self, raw: dict):
         ind = parse_boards(raw.get("board_industry"))
         con = parse_boards(raw.get("board_concept"))
+        # THS 兜底：如果 ego 板块数据为空，用同花顺指数数据
+        if not ind or not con:
+            try:
+                ths = get_ths_client()
+                if not ind:
+                    ths_ind = ths.ths_index_list(tag="industry")
+                    if ths_ind:
+                        ind = []
+                        for idx, item in enumerate(ths_ind[:20], 1):
+                            snap = ths.ths_index_snapshot(item.get("thscode", ""))
+                            ind.append({
+                                "rank": idx,
+                                "name": item.get("name", ""),
+                                "code": item.get("thscode", ""),
+                                "pct": snap.get("price_change_ratio_pct"),
+                                "amount": snap.get("turnover"),
+                            })
+                        if ind:
+                            self._add_source("同花顺API(行业板块)")
+            except Exception as e:
+                log.warning("THS 板块兜底失败: %s", str(e)[:100])
         return {"industry": ind, "concept": con}
 
     # ---------- 资金 ----------

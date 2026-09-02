@@ -5,8 +5,8 @@
 # 规则变更：用户提出新要求 → 更新本文件 + RULES.md → git 提交。
 # ============================================================
 meta:
-  version: "1.4"
-  effective_date: "2026-08-12"
+  version: "1.6"
+  effective_date: "2026-09-02"
   issue_log: "docs/问题与修复记录.md (ISSUE-001 v1.1)"
   status: "权威规则（用户确认后生效）"
   priority_policy: "hard=红线必须满足；soft=建议项，尽量满足"
@@ -95,7 +95,7 @@ rules:
     category: 预测
     priority: hard
     title: "次日 3 只标的（固定策略）"
-    description: "7-10日强势板块+资金活跃+剔除ST+量比过滤+消息面+LLM研判，输出3只；评估口径：昨收买→今收卖（收盘-收盘）"
+    description: "7-10日强势板块+资金活跃+剔除ST+量比过滤+消息面+LLM研判，输出3只；报告日收盘后生成，T+1收盘买入，T+2收盘卖出"
     enforcement: "predict 流程固定；targets 数量=3（不足须注明原因）"
     on_violation: "注明原因，不静默改数量"
 
@@ -135,17 +135,17 @@ rules:
   - id: R14
     category: 跟踪评估
     priority: hard
-    title: "评估口径：昨收买→今收卖（收盘-收盘）"
-    description: "昨日标的次日评估按昨收买入、今收卖出计算涨幅与命中率（用户确认 v1.4）"
-    enforcement: "结算以今收为卖出价，ret=今收/昨收-1；卡片与HTML展示昨收/今收/收益"
-    on_violation: "口径不是收盘-收盘视为违规"
+    title: "评估口径：T+1收盘买→T+2收盘卖（真实可执行）"
+    description: "推荐日T收盘后发布，用户最早T+1买入；评估必须按T+1收盘买入、T+2收盘卖出（用户确认 v1.5）"
+    enforcement: "ret=T+2收盘/T+1收盘-1；必须持久化buy_date/sell_date/reference_price；禁止用T日参考价冒充买入价"
+    on_violation: "口径不是T+1收盘→T+2收盘视为违规"
 
   - id: R15
     category: 跟踪评估
     priority: hard
-    title: "自动结算"
-    description: "工作日15:30定时结算 + 每次复盘/预测时自动结算"
-    enforcement: "launchd 定时任务 + workflow 自动调用"
+    title: "自动结算与16:00推送"
+    description: "交易日16:00自动推送终版；若错过后开机/定时轮询补执行；每次执行前先结算已完成卖出窗口的预测。盘中旧报告不得当作终版复用或推送"
+    enforcement: "launchd 16:00 + RunAtLoad/轮询补执行；终版必须收盘后生成、含T日参考价；sent flag绑定report.meta.generated_at"
     on_violation: "手动触发补结算并提示"
 
   # ---------------- E. 系统 ----------------
@@ -256,6 +256,15 @@ rules:
     implementation_status: "已实现（I01/I06/I16 修复）"
     on_violation: "数据源失联必须上报用户审查，禁止静默降级"
 
+
+  # ---------------- K. 数据源健康（v1.5 新增） ----------------
+  - id: R32
+    category: 数据源健康
+    priority: hard
+    title: "推送前双源健康检查"
+    description: "自动复盘前必须检查同花顺API和WorkBuddy MCP；任一可用即执行，全部不可用则飞书告警并重试；单源降级也必须飞书告知"
+    enforcement: "scripts/check_data_sources.py 输出结构化状态；本地MCP禁止经过VPN/系统代理；auto_review.py 做门禁、重试和同日告警去重"
+    on_violation: "静默跳过或静默降级视为违规"
 
   # ---------------- I. 因子管理（v1.2 新增） ----------------
   - id: R28

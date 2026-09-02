@@ -21,20 +21,73 @@ def _get_cached_mcp():
     return CachedMcp(mcp, MCPCache(p["data"] / "mcp_cache.db"))
 
 
-def _build_tracking(tr, settle_result) -> dict:
-    """推荐跟踪数据：昨日结算 + 累计命中率统计 + 最新预测（含未结算）"""
+def _build_tracking(tr, settle_result, trade_date: str = None) -> dict:
+    """推荐跟踪数据：昨日结算 + 累计命中率统计 + 昨日预测（含未结算）
+    trade_date: 当前交易日，用于获取"上一个交易日"的预测记录"""
     try:
+        from datetime import date as _date
         stats = tr.stats(days=120)
-        # 补充：最新预测记录（即使未结算，也要显示昨日推荐标的）
+        # 获取"昨日"的预测记录（trade_date 之前的最新预测，不包括 trade_date 本身）
+        # 这样确保"昨日推荐标的"显示的是昨天推荐的，而不是今天刚生成的
+        today_str = trade_date or str(_date.today())
         latest = tr.latest_prediction()
         latest_pred = None
+        pred_date = None
         if latest:
-            import json as _json
-            pred_data = _json.loads(latest[1])
-            latest_pred = {
-                "date": latest[0],
-                "targets": pred_data.get("targets", []),
-            }
+            pred_date = latest[0]
+            # 如果最新预测就是今天的，跳过，找昨天的
+            if pred_date >= today_str:
+                # 从数据库找 today_str 之前的最新预测
+                conn = tr._conn()
+                row = conn.execute(
+                    "SELECT date, targets FROM predictions WHERE date < ? ORDER BY date DESC LIMIT 1",
+                    (today_str,)
+                ).fetchone()
+                conn.close()
+                if row:
+                    pred_date, targets_json = row
+                    import json as _json
+                    pred_data = _json.loads(targets_json)
+                    latest_pred = {
+                        "date": pred_date,
+                        "targets": pred_data.get("targets", []),
+                    }
+            else:
+                import json as _json
+                pred_data = _json.loads(latest[1])
+                latest_pred = {
+                    "date": pred_date,
+                    "targets": pred_data.get("targets", []),
+                }
+        # 补充：查询已结算结果（即使 settle_pending 返回"无可结算"，也要读取已结算数据）
+        if latest_pred and pred_date:
+            try:
+                conn = tr._conn()
+                rows = conn.execute(
+                "SELECT target_code, target_name, buy_price, sell_close, ret_close, "
+                "ret, buy_date, sell_date, reference_price, status "
+                    "FROM prediction_results WHERE date=? ORDER BY id",
+                    (pred_date,)
+                ).fetchall()
+                conn.close()
+                if rows:
+                    settle_detail = {
+                        "pred_date": pred_date,
+                        "results": [
+                            {
+                                "code": r[0], "name": r[1],
+                                "buy_price": r[2], "sell_price": r[3],
+                                "ret_close": r[4], "ret": r[5],
+                                "status": r[9],
+                                "buy_date": r[6], "sell_date": r[7],
+                                "reference_price": r[8],
+                            } for r in rows
+                        ],
+                    }
+                    # 覆盖 settle_result，显示真实的结算数据
+                    settle_result = settle_detail
+            except Exception as e:
+                log.warning("读取已结算结果失败: %s", str(e)[:100])
         return {"settle": settle_result, "stats": stats, "latest_prediction": latest_pred}
     except Exception as e:
         log.warning("跟踪数据组装失败: %s", str(e)[:100])
@@ -87,6 +140,7 @@ def _attach_compliance(report: dict, pre: dict = None) -> dict:
         ctx = {
             "rules_preloaded": bool((pre or {}).get("ok", True)),
             "mcp_available": _mcp_available(),
+            "source_available": _mcp_available() or bool(report.get("source")),
             "sectors_count": len(report.get("sector_rank") or []),
             "prediction_targets": len(targets),
             "candidate_count": pred.get("candidate_count", len(targets)),
@@ -150,7 +204,7 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
                 settle_result = tr.settle_pending(cached)
                 existing["prediction"] = dict(existing.get("prediction") or {})
                 existing["prediction"]["settle"] = settle_result
-                existing["tracking"] = _build_tracking(tr, settle_result)
+                existing["tracking"] = _build_tracking(tr, settle_result, trade_date=existing.get("date"))
                 st.save_report(existing)
             existing["_settle"] = settle_result
             return _attach_compliance(existing, pre)
@@ -195,9 +249,22 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
             report["prediction"] = {"status": "预测生成失败", "error": str(e)[:200], "targets": []}
         # 推荐跟踪（昨日结算+累计命中率）无论预测是否成功都嵌入
         if auto_track:
-            report["tracking"] = _build_tracking(tr, settle_result)
+            report["tracking"] = _build_tracking(tr, settle_result, trade_date=report.get("date"))
     report = _attach_compliance(report, pre)
+    # === 报告校验（防御层 V01-V08） ===
+    from .report_validator import validate_and_block
+    can_send, val_errors = validate_and_block(report)
+    report["_validation"] = {
+        "passed": can_send,
+        "errors": [str(e) for e in val_errors if e.severity == "error"],
+        "warnings": [str(e) for e in val_errors if e.severity == "warning"],
+    }
+    if not can_send:
+        log.error("报告校验未通过: %s", report["_validation"]["errors"])
     st.save_report(report)
     (p["reports"] / f"{report['date']}.html").write_text(render_html(report), encoding="utf-8")
     report["_settle"] = settle_result
+    # === 结构化日志（追溯层） ===
+    from .review_logger import log_review_run
+    log_review_run(report)
     return report

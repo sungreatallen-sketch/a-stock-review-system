@@ -4,7 +4,7 @@ REST API 直连，不经过 WorkBuddy 代理，解决 catalog 过滤问题。
 """
 import logging
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -35,17 +35,25 @@ class THSClient:
 
     def _get(self, path: str, params: Dict = None) -> Dict:
         url = f"{self.base_url}{path}"
-        try:
-            resp = self._session.get(url, params=params, timeout=30)
-            resp.raise_for_status()
-            data = resp.json()
-            if data.get("code") != 0:
-                log.warning("THS API 错误: %s %s → %s", path, params, data.get("message"))
-                return {}
-            return data.get("data") or {}
-        except Exception as e:
-            log.warning("THS API 请求失败: %s → %s", path, str(e)[:200])
-            return {}
+        last_error = None
+        for attempt in range(2):
+            try:
+                resp = self._session.get(url, params=params, timeout=30)
+                if resp.status_code in (429, 500, 502, 503, 504) and attempt == 0:
+                    time.sleep(1.2)
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("code") != 0:
+                    log.warning("THS API 错误: %s %s → %s", path, params, data.get("message"))
+                    return {}
+                return data.get("data") or {}
+            except Exception as e:
+                last_error = e
+                if attempt == 0:
+                    time.sleep(0.8)
+        log.warning("THS API 请求失败: %s → %s", path, str(last_error)[:200])
+        return {}
 
     # ── 交易日历 ──
     def trading_days(self, begin: date, end: date) -> List[str]:
@@ -55,10 +63,12 @@ class THSClient:
             "end_date": end.strftime("%Y%m%d"),
         })
         items = data.get("item") or []
-        # 转为 YYYY-MM-DD 格式
+        # 某些网关版本会忽略日期参数；这里必须在客户端强制收敛到请求区间。
+        begin_s, end_s = begin.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
         return [
             datetime.fromtimestamp(it["date_ms"] / 1000).strftime("%Y-%m-%d")
             for it in items if it.get("date_ms")
+            and begin_s <= datetime.fromtimestamp(it["date_ms"] / 1000).strftime("%Y-%m-%d") <= end_s
         ]
 
     def is_trading_day(self, d: date) -> bool:
@@ -192,6 +202,111 @@ class THSClient:
                 return it
         return items[0] if items else {}
 
+
+
+    # ── 涨跌停数据 ──
+    def limit_up_pool(self, trade_date: str) -> List[Dict]:
+        """获取涨停股票池（含连板信息）
+        trade_date: YYYY-MM-DD 或 YYYYMMDD 格式"""
+        d = trade_date.replace("-", "")
+        data = self._get("/api/a-share/special-data/limit-up-pool", {"date": d})
+        return data.get("item") or []
+
+    def limit_down_pool(self, trade_date: str) -> List[Dict]:
+        """获取跌停股票池"""
+        d = trade_date.replace("-", "")
+        data = self._get("/api/a-share/special-data/limit-down-pool", {"date": d})
+        return data.get("item") or []
+
+    def limit_break_pool(self, trade_date: str) -> List[Dict]:
+        """获取炸板股票池"""
+        d = trade_date.replace("-", "")
+        data = self._get("/api/a-share/special-data/limit-break-pool", {"date": d})
+        return data.get("item") or []
+
+    def limit_up_ladder(self) -> List[Dict]:
+        """获取近30个交易日连板天梯"""
+        data = self._get("/api/a-share/special-data/limit-up-ladder")
+        return data.get("item") or []
+
+    # ── 热榜数据 ──
+    def hot_stock_list(self, period: str = "24h") -> List[Dict]:
+        """获取热股榜 Top30
+        period: '24h' 或 '1h'"""
+        data = self._get("/api/a-share/special-data/hot-stock-list", {"period": period})
+        return data.get("item") or []
+
+    def skyrocket_list(self, period: str = "24h") -> List[Dict]:
+        """获取飙升榜 Top30"""
+        data = self._get("/api/a-share/special-data/skyrocket-list", {"period": period})
+        return data.get("item") or []
+
+    # ── 个股异动原因 ──
+    def anomaly_analysis_list(self, tag_codes: str = "") -> List[Dict]:
+        """获取当日个股异动原因列表
+        tag_codes: 逗号分隔，如 'LIMIT_UP,SHARP_RISE'"""
+        params = {}
+        if tag_codes:
+            params["tag_codes"] = tag_codes
+        data = self._get("/api/a-share/special-data/anomaly-analysis-list", params)
+        return data.get("item") or []
+
+    # ── 龙虎榜 ──
+    def dragon_tiger_list(self, trade_date: str, list_type: str = "all") -> List[Dict]:
+        """获取龙虎榜
+        trade_date: YYYY-MM-DD 或 YYYYMMDD
+        list_type: 'all' / 'institution' / 'hot_money'"""
+        d = trade_date.replace("-", "")
+        data = self._get("/api/a-share/special-data/dragon-tiger-list", {
+            "date": d, "type": list_type
+        })
+        return data.get("item") or []
+
+    # ── 指数数据（增强） ──
+    def index_snapshot(self, thscodes: str) -> List[Dict]:
+        """批量获取指数快照
+        thscodes: 逗号分隔的指数代码，如 '000001.SH,399001.SZ'"""
+        data = self._get("/api/a-share-index/prices/snapshot", {"thscodes": thscodes})
+        return data.get("item") or []
+
+    def index_kline(self, thscode: str, start: date = None, end: date = None,
+                    interval: str = "1d", adjust: int = 0) -> List[Dict]:
+        """获取指数历史 K 线"""
+        end = end or date.today()
+        start = start or (end - timedelta(days=30))
+        params = {
+            "thscode": thscode,
+            "interval": interval,
+            "adjust": adjust,
+            "start": _ts(start),
+            "end": _ts(end),
+        }
+        data = self._get("/api/a-share-index/prices/historical", params)
+        return data.get("item") or []
+
+    def ths_index_list(self, tag: str = "industry") -> List[Dict]:
+        """获取同花顺指数/板块列表
+        tag: 'industry'(行业) / 'cn_concept'(概念) / 'region'(地域)"""
+        data = self._get("/api/a-share-index/catalog/ths-index-list", {"tag": tag})
+        return data.get("item") or []
+
+    def index_constituents(self, thscode: str) -> List[Dict]:
+        """获取指数/板块成分股"""
+        data = self._get("/api/a-share-index/constituents/ths-stock-list", {"thscode": thscode})
+        return data.get("item") or []
+
+    # ── 全市场快照（带筛选） ──
+    def snapshot_paged(self, limit: int = 200, offset: int = 0) -> List[Dict]:
+        """分页获取全市场快照"""
+        data = self._get("/api/a-share/prices/snapshot", {"limit": limit, "offset": offset})
+        return data.get("item") or []
+
+    # ── 多股快照 ──
+    def snapshot_batch(self, thscodes: str) -> List[Dict]:
+        """批量获取多只股票快照
+        thscodes: 逗号分隔，如 '600519.SH,000001.SZ'"""
+        data = self._get("/api/a-share/prices/snapshot", {"thscodes": thscodes})
+        return data.get("item") or []
 
 # 单例
 _ths_client: Optional[THSClient] = None

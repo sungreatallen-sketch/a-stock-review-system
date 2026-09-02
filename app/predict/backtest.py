@@ -28,14 +28,31 @@ class Backtest:
     def trading_days(self, end_date: str, count: int) -> list:
         """从指数日线取最近 count 个交易日（含 end_date 向前）
         MCP 不可用时自动切换 ego browser 兜底"""
-        resp = self.mcp.call(
-            "tongzhou-fin-research_fin_data__get_kline_series",
-            {"ticker": INDEX_TICKER, "market": "index",
-             "end_date": end_date, "limit": count + 5})
-        days = [p["time"] for p in _points(resp)]
-        days.sort()
-        if days:
-            return days[-count:]
+        # THS 优先
+        try:
+            from ..ths_client import get_ths_client
+            from datetime import date as _d, timedelta as _td
+            ths = get_ths_client()
+            end = _d.fromisoformat(end_date)
+            start = end - _td(days=count * 3)
+            raw = ths.trading_days(start, end)
+            if raw:
+                days = sorted(raw)[-count:]
+                return days
+        except Exception as e:
+            log.warning("THS 交易日历失败: %s", str(e)[:100])
+        # MCP 兜底
+        try:
+            resp = self.mcp.call(
+                "tongzhou-fin-research_fin_data__get_kline_series",
+                {"ticker": INDEX_TICKER, "market": "index",
+                 "end_date": end_date, "limit": count + 5})
+            days = [p["time"] for p in _points(resp)]
+            days.sort()
+            if days:
+                return days[-count:]
+        except Exception as e:
+            log.warning("MCP 交易日历失败: %s", str(e)[:100])
         # MCP 兜底：ego browser 获取交易日历
         log.info("MCP 交易日历为空，切换 ego browser")
         try:

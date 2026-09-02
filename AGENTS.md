@@ -15,7 +15,7 @@
 - 数据真实性：不编造，标“数据不可获取”；来源可溯源
 - 数据源：同花顺行情/K线主源 → ego/MCP 兜底；本地 MCP 禁走 VPN/系统代理；连不上必须上报用户
 - WorkBuddy失败时，通达信类工具走OAuth直连兜底；`data/tdx_oauth.json`不提交、不打印
-- WorkBuddy失败时，同舟工具走OAuth直连；Wind需`WIND_API_KEY`或OAuth凭据；token配置均不提交、不打印
+- WorkBuddy失败时，同舟工具走OAuth直连；Wind走本地600权限API key直连；token配置均不提交、不打印
 - 推荐执行窗口：T 日收盘后发布 → **T+1 收盘买入 → T+2 收盘卖出**
 - 评估必须等 T+2 出现；任一执行收盘价缺失保持 pending，不部分结算
 - 16:00 只推送收盘后终版；盘中旧报告必须 force 刷新；sent flag 必须绑定 generated_at

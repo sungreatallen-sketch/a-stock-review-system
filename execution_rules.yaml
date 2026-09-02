@@ -283,7 +283,7 @@ rules:
     title: "同舟/Wind官方MCP直连与凭据安全"
     description: "WorkBuddy聚合代理失败时，同舟工具自动走同舟官方OAuth直连；Wind在配置WIND_API_KEY或OAuth凭据后走官方直连。K线仍优先通达信直连，因为同舟当前工具集无K线"
     enforcement: "create_resilient_client()统一注入TDX/Tongzhou/Wind；直连缺失工具必须显式失败；oauth配置600且gitignore；直连禁用系统代理；401自动刷新一次"
-    implementation_status: "同舟已授权并验证16工具；Wind待用户配置WIND_API_KEY或OAuth凭据"
+    implementation_status: "同舟已授权并验证16工具；Wind已配置API key并验证34工具"
     on_violation: "解密WorkBuddy凭据、提交token、伪造缺失工具结果均视为违规"
 
   # ---------------- I. 因子管理（v1.2 新增） ----------------

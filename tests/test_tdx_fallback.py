@@ -38,6 +38,16 @@ class _FakeTongzhou:
         return {"isError": False, "items": ["ok"], "raw": ["ok"], "structured": {"ok": True}}
 
 
+class _FakeWind:
+    def list_tools(self):
+        return {"get_stock_quote": {}}
+
+    async def acall_tool(self, name, arguments=None, timeout=90):
+        assert name == "get_stock_quote"
+        assert arguments.get("windcode") == "600519.SH"
+        return {"isError": False, "items": ["ok"], "raw": ["ok"], "structured": {"rows": 1}}
+
+
 def test_tdx_kline_fallback_normalizes_existing_contract():
     """同舟K线不可用时，TDX必须归一化成data.points且不混入未来日期。"""
     client = ResilientMcpClient(_DownClient(), _FakeTdx())
@@ -72,6 +82,16 @@ def test_missing_tongzhou_tool_does_not_fake_fallback():
         assert "缺少工具" in str(e)
     else:
         raise AssertionError("同舟缺失工具不应静默fallback")
+
+
+def test_wind_tool_fallback_strips_connector_prefix():
+    """WorkBuddy失败时，Wind官方MCP应剥离连接器前缀后直连。"""
+    client = ResilientMcpClient(_DownClient(), _FakeTdx(), wind=_FakeWind())
+    resp = asyncio.run(client.call_tool(
+        "wind-finance_get_stock_quote",
+        {"windcode": "600519.SH"}, timeout=1,
+    ))
+    assert resp["structured"]["rows"] == 1
 
 
 def test_non_tdx_tool_does_not_fake_fallback():

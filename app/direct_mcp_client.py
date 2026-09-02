@@ -98,9 +98,9 @@ class DirectMcpClient:
         cfg = self._load_config()
         auth_type = cfg.get("auth_type", "oauth")
         if auth_type == "static_bearer":
-            value = os.getenv(cfg.get("api_key_env", ""), "")
+            value = cfg.get("api_key") or os.getenv(cfg.get("api_key_env", ""), "")
             if not value:
-                raise RuntimeError(f"缺少环境变量{cfg.get('api_key_env')}，无法直连")
+                raise RuntimeError(f"缺少WIND_API_KEY配置或环境变量{cfg.get('api_key_env')}，无法直连")
             return value.removeprefix("Bearer ")
         tokens = cfg.get("tokens") or {}
         if not tokens.get("access_token"):

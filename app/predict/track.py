@@ -1,4 +1,4 @@
-"""模拟盘跟踪：记录每日预测 → T+1收盘买入 → T+2收盘卖出 → 命中率统计"""
+"""模拟盘跟踪：记录每日预测 → T+1开盘买入 → T+2收盘卖出 → 命中率统计"""
 import json
 import logging
 import sqlite3
@@ -43,7 +43,9 @@ class Tracker:
                        ("ret_close", "ALTER TABLE prediction_results ADD COLUMN ret_close REAL"),
                        ("buy_date", "ALTER TABLE prediction_results ADD COLUMN buy_date TEXT"),
                        ("sell_date", "ALTER TABLE prediction_results ADD COLUMN sell_date TEXT"),
-                       ("reference_price", "ALTER TABLE prediction_results ADD COLUMN reference_price REAL")):
+                       ("reference_price", "ALTER TABLE prediction_results ADD COLUMN reference_price REAL"),
+                       ("buy_price_type", "ALTER TABLE prediction_results ADD COLUMN buy_price_type TEXT"),
+                       ("sell_price_type", "ALTER TABLE prediction_results ADD COLUMN sell_price_type TEXT")):
             if c not in cols:
                 conn.execute(sql)
         conn.commit()
@@ -73,10 +75,11 @@ class Tracker:
         return row
 
     def _find_settleable_prediction(self, today: str):
-        """找昨天及之前的未结算预测（今天的预测今天不能结算）"""
+        """按推荐日先进先出找未结算预测（今天的预测今天不能结算）。
+        FIFO保证历史成熟批次优先结算；9/3批次未到期时不会挡住9/2成熟批次。"""
         conn = self._conn()
         rows = conn.execute(
-            "SELECT date, targets FROM predictions WHERE date < ? ORDER BY date DESC",
+            "SELECT date, targets FROM predictions WHERE date < ? ORDER BY date ASC",
             (today,)
         ).fetchall()
         conn.close()
@@ -109,8 +112,8 @@ class Tracker:
                buy_date: str = None, sell_date: str = None,
                reference_prices: dict = None) -> dict:
         """pred_date: 推荐日 T。
-        真实可执行口径：T+1 收盘买入，T+2 收盘卖出。
-        buy_prices/sell_prices 分别是两个执行日的收盘价；reference_prices 只保存 T 日参考价。"""
+        模拟实盘口径：T+1 开盘买入，T+2 收盘卖出。
+        buy_prices 是 T+1 开盘价；sell_prices 是 T+2 收盘价；reference_prices 只保存 T 日参考价。"""
         buy_prices = buy_prices or {}
         sell_prices = sell_prices or {}
         reference_prices = reference_prices or {}
@@ -134,10 +137,10 @@ class Tracker:
             ret = round((sell_close / buy - 1) * 100, 2)
             conn.execute(
                 "INSERT INTO prediction_results(date, target_code, target_name, buy_price, sell_price, ret, "
-                "sell_close, ret_close, buy_date, sell_date, reference_price, status, created_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "sell_close, ret_close, buy_date, sell_date, reference_price, buy_price_type, "
+                "sell_price_type, status, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (pred_date, code, t.get("name"), buy, sell_close, ret, sell_close, ret,
-                 buy_date, sell_date, reference, "settled",
+                 buy_date, sell_date, reference, "open", "close", "settled",
                  __import__("datetime").datetime.now().isoformat()))
             saved += 1
         conn.commit()
@@ -149,10 +152,10 @@ class Tracker:
                 log.warning("数据积累文件更新失败: %s", str(e)[:120])
         return {"date": pred_date, "buy_date": buy_date, "sell_date": sell_date,
                 "settled": saved, "missing_close": missing,
-                "settlement_rule": "T+1收盘买入→T+2收盘卖出"}
+                "settlement_rule": "T+1开盘买入→T+2收盘卖出"}
 
     def settle_pending(self, cached, today: str = None) -> dict:
-        """自动结算：找最近一条未结算预测（昨天及之前），若其次日为过去交易日则回填收盘价"""
+        """自动结算：找最早一笔未结算预测；只有T+2卖出日已出现才完整结算。"""
         from datetime import date as _date
         today_str = today or str(_date.today())
         # 找昨天及之前的未结算预测（今天的预测今天不能结算）
@@ -211,7 +214,7 @@ class Tracker:
         if buy_date == pred_date or sell_date == buy_date:
             return {"date": pred_date, "note": "执行日数据异常"}
 
-        # 拉取 T+2 卖出日收盘价（MCP 优先，失败自动切 ego/THS 兜底）
+        # 拉取 T+2 卖出日收盘价（THS优先，MCP/ego兜底）
         targets = json.loads(row[1]).get("targets") or []
         codes = [(t.get("code") or "").split(".")[0] for t in targets]
         closes = {}
@@ -271,7 +274,7 @@ class Tracker:
             return {"date": pred_date, "buy_date": buy_date, "sell_date": sell_date,
                     "note": f"卖出日收盘价缺失:{','.join(missing)}"}
 
-        # T+1 买入日收盘价。没有这个价格就不能伪造真实可执行收益。
+        # T+1 买入日开盘价。没有这个价格就不能伪造模拟实盘收益。
         buys = {}
         buy_sources = {}
         for code in codes:
@@ -288,8 +291,8 @@ class Tracker:
                         continue
                     item_day = __import__("datetime").datetime.fromtimestamp(
                         it["date_ms"] / 1000).strftime("%Y-%m-%d")
-                    if item_day == buy_date and it.get("close_price") is not None:
-                        buys[code] = float(it["close_price"])
+                    if item_day == buy_date and it.get("open_price") is not None:
+                        buys[code] = float(it["open_price"])
                         buy_sources[code] = "THS"
                         break
             except Exception as e:
@@ -301,8 +304,8 @@ class Tracker:
                                         "end_date": buy_date, "limit": 6})
                     pt = next((x for x in ((resp or {}).get("data") or {}).get("points") or []
                                if x.get("time") == buy_date), None)
-                    if pt and pt.get("close"):
-                        buys[code] = float(pt["close"])
+                    if pt and pt.get("open"):
+                        buys[code] = float(pt["open"])
                         buy_sources[code] = "MCP"
                 except Exception as e:
                     log.warning("MCP 买入日K线取 %s 失败: %s", code, str(e)[:120])
@@ -310,19 +313,19 @@ class Tracker:
                 try:
                     from .alt_data import EgoOpenPrices
                     from ..config import paths as get_paths
-                    _, close = EgoOpenPrices(get_paths()["data"] / "ego_kline.db").fetch_with_close(buy_date, [code])
-                    if close.get(code):
-                        buys[code] = float(close[code])
+                    opens, _ = EgoOpenPrices(get_paths()["data"] / "ego_kline.db").fetch_with_close(buy_date, [code])
+                    if opens.get(code):
+                        buys[code] = float(opens[code])
                         buy_sources[code] = "ego"
                 except Exception as e:
                     log.warning("ego 买入日K线取 %s 失败: %s", code, str(e)[:120])
         if not buys:
             return {"date": pred_date, "buy_date": buy_date, "sell_date": sell_date,
-                    "note": "买入日收盘价未获取到"}
+                    "note": "买入日开盘价未获取到"}
         missing_buys = [code for code in codes if code not in buys]
         if missing_buys:
             return {"date": pred_date, "buy_date": buy_date, "sell_date": sell_date,
-                    "note": f"买入日收盘价缺失:{','.join(missing_buys)}"}
+                    "note": f"买入日开盘价缺失:{','.join(missing_buys)}"}
         res = self.settle(pred_date, buys, sells, buy_date=buy_date, sell_date=sell_date)
         res["sell_date"] = sell_date
         used_sources = set(sell_sources.values()) | set(buy_sources.values())
@@ -344,12 +347,13 @@ class Tracker:
         conn = self._conn()
         rows = conn.execute(
             "SELECT date, target_code, target_name, buy_price, sell_price, ret, sell_close, ret_close, "
-            "buy_date, sell_date, reference_price, status "
+            "buy_date, sell_date, reference_price, buy_price_type, sell_price_type, status "
             "FROM prediction_results WHERE status='settled' ORDER BY date, id").fetchall()
         conn.close()
         records = [{"date": r[0], "code": r[1], "name": r[2], "buy": r[3], "sell": r[4],
                     "ret": r[5], "sell_close": r[6], "ret_close": r[7],
-                    "buy_date": r[8], "sell_date": r[9], "reference_price": r[10]} for r in rows]
+                    "buy_date": r[8], "sell_date": r[9], "reference_price": r[10],
+                    "buy_price_type": r[11] or "open", "sell_price_type": r[12] or "close"} for r in rows]
         # 按日汇总
         daily = {}
         for r in records:
@@ -392,7 +396,8 @@ class Tracker:
         month_summary = {m: {"count": len(v), "win_rate": round(sum(1 for x in v if x > 0) / len(v) * 100, 1),
                              "avg_ret": round(_st.mean(v), 2)} for m, v in sorted(by_month.items())}
         out = {
-            "meta": {"version": "1.0", "updated_at": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
+            "meta": {"version": "2.0", "updated_at": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
+                     "settlement_rule": "T+1开盘买入→T+2收盘卖出",
                      "note": "后台数据积累文件：全部已结算推荐记录与分析；前端报告只展示最近一天，不展示本文件累计"},
             "cumulative": cumulative,
             "by_month": month_summary,
@@ -410,7 +415,7 @@ class Tracker:
         conn = self._conn()
         rows = conn.execute(
             "SELECT date, target_code, target_name, buy_price, sell_price, ret, "
-            "sell_close, ret_close, buy_date, sell_date, reference_price, status "
+            "sell_close, ret_close, buy_date, sell_date, reference_price, buy_price_type, sell_price_type, status "
             "FROM prediction_results WHERE status='settled' ORDER BY date DESC LIMIT ?",
             (days * 3,)).fetchall()
         conn.close()
@@ -431,7 +436,8 @@ class Tracker:
             "recent": [
                 {"date": r[0], "name": r[2], "buy": r[3], "sell": r[4], "ret": r[5],
                  "sell_close": r[6], "ret_close": r[7],
-                 "buy_date": r[8], "sell_date": r[9], "reference_price": r[10], "status": r[11]}
+                 "buy_date": r[8], "sell_date": r[9], "reference_price": r[10],
+                 "buy_price_type": r[11] or "open", "sell_price_type": r[12] or "close", "status": r[13]}
                 for r in rows[:15]
             ],
         }

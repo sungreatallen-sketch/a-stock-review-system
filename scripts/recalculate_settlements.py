@@ -1,6 +1,6 @@
-"""按真实可执行口径重算全部历史预测。
+"""按模拟实盘口径重算全部历史预测。
 
-规则：推荐日 T 只保留参考价；评估价必须为 T+1 收盘买入价和 T+2 收盘卖出价。
+规则：推荐日 T 只保留参考价；评估价必须为 T+1 开盘买入价和 T+2 收盘卖出价。
 所有价格逐笔从同花顺历史 K 线重新拉取，禁止沿用旧口径计算出的收益。
 
 默认 dry-run：只核对价格与执行日，不改数据库。
@@ -20,7 +20,7 @@ def _ths_code(code: str) -> str:
     return f"{code}.SH" if code.startswith("6") else f"{code}.SZ"
 
 
-def _close_on(ths, code: str, day: str):
+def _price_on(ths, code: str, day: str, field: str):
     if not day:
         return None
     wanted = datetime.fromisoformat(day)
@@ -29,9 +29,17 @@ def _close_on(ths, code: str, day: str):
         if not item.get("date_ms"):
             continue
         item_day = datetime.fromtimestamp(item["date_ms"] / 1000)
-        if item_day.strftime("%Y-%m-%d") == day and item.get("close_price") is not None:
-            return float(item["close_price"])
+        if item_day.strftime("%Y-%m-%d") == day and item.get(field) is not None:
+            return float(item[field])
     return None
+
+
+def _open_on(ths, code: str, day: str):
+    return _price_on(ths, code, day, "open_price")
+
+
+def _close_on(ths, code: str, day: str):
+    return _price_on(ths, code, day, "close_price")
 
 
 def main():
@@ -83,7 +91,7 @@ def main():
         item.update({"buy_date": buy_date, "sell_date": sell_date})
         complete = True
         for code in codes:
-            buy = _close_on(ths, code, buy_date)
+            buy = _open_on(ths, code, buy_date)
             sell = _close_on(ths, code, sell_date)
             item["rows"].append({"code": code, "buy": buy, "sell": sell})
             if buy is None or sell is None:
@@ -126,10 +134,10 @@ def main():
             settled_dates.append(item["prediction_date"])
     tr.export_history()
     output = {
-        "meta": {
-            "version": "2.0",
+            "meta": {
+            "version": "3.0",
             "updated_at": datetime.now().isoformat(timespec="seconds"),
-            "settlement_rule": "T+1收盘买入→T+2收盘卖出",
+            "settlement_rule": "T+1开盘买入→T+2收盘卖出",
             "price_source": "同花顺历史K线",
             "backup": str(backup),
         },

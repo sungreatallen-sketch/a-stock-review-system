@@ -90,7 +90,7 @@ def _check_one(rid: str, ctx: dict) -> tuple:
     if rid == "R11": return True, "同日预测锁定复用"
     if rid == "R12": return tracking > 0, f"昨日评估 {tracking} 笔" + ("" if tracking else "（缺失）")
     if rid == "R13": return tracking > 0, f"命中率统计已输出（{tracking} 笔）"
-    if rid == "R14": return close_price, "T+1收盘买→T+2收盘卖" + ("" if close_price else "（缺执行收盘口径）")
+    if rid == "R14": return close_price, "T+1开盘买→T+2收盘卖" + ("" if close_price else "（缺执行价格口径）")
     if rid == "R15": return True, "16:00定时 + 开机/轮询补执行 + 复盘时自动结算"
     if rid == "R16": return complete, "报告完整性检查" + ("" if complete else "（不完整→强制重生成）")
     if rid == "R17": return True, "消息级+回复级去重"

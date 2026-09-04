@@ -199,7 +199,7 @@ function boardTable(rows){
       <div class="note" style="margin-top:6px"><b>逻辑</b>：${x['reason']||x['逻辑']||''}</div>
       <div class="warn" style="margin-top:4px"><b>风险</b>：${x['risk']||'无'}</div>
     </div>`).join('');
-    box.innerHTML = `${p.market_view?`<div class="warn" style="margin-bottom:10px">📌 市场判断：${p.market_view}</div>`:''}<div class="grid">${heads}</div><div class="note">${p.strategy||''}｜T日收盘价仅作参考；T+1收盘买入，T+2收盘卖出</div>`;
+    box.innerHTML = `${p.market_view?`<div class="warn" style="margin-bottom:10px">📌 市场判断：${p.market_view}</div>`:''}<div class="grid">${heads}</div><div class="note">${p.strategy||''}｜T日收盘价仅作参考；T+1开盘买入，T+2收盘卖出</div>`;
   } else {
     box.innerHTML = p.status || '预测引擎开发中（M2/M3 上线）';
   }
@@ -211,54 +211,52 @@ function boardTable(rows){
   const stats = t.stats||{};
   const settle = t.settle||{};
   const latestPred = t.latest_prediction||{};
+  const settledPred = t.settled_prediction||{};
+  const pendingPred = t.pending_prediction||latestPred||{};
   const box = document.getElementById('trackBox');
+  const pct = v => `<td class="${cls(v)}">${v>=0?'+':''}${v}%</td>`;
+  const settledRows = (settle.results||[]).length ? settle.results :
+    (stats.recent||[]).filter(r => r.date === settle.pred_date);
   let html = '';
-  if (settle && settle.settled) {
-    html = `<div class="warn" style="margin-bottom:8px">昨日推荐已结算：${settle.settled} 只（T+1收盘买入，T+2收盘卖出）</div>`;
-  }
   if (stats && stats.count) {
     html += `<div class="emo">
-      <div class="b"><div class="v">${stats.win_rate??'-'}%</div><div class="l">累计命中率(T+1收盘→T+2收盘)</div></div>
+      <div class="b"><div class="v">${stats.win_rate??'-'}%</div><div class="l">累计命中率(T+1开盘→T+2收盘)</div></div>
       <div class="b"><div class="v">${stats.avg_ret??'-'}</div><div class="l">平均收益%</div></div>
       <div class="b"><div class="v">${stats.best??'-'}</div><div class="l">最佳%</div></div>
       <div class="b"><div class="v">${stats.count??'-'}</div><div class="l">已结算笔数</div></div></div>`;
   }
-  // 昨日推荐标的（优先用 latest_prediction，确保显示昨天的推荐而非前天）
-  const predTargets = latestPred.targets||[];
-  const predDate = latestPred.date||'';
-  if (predTargets.length) {
-    const rows = stats.recent||[];
-    const settledRows = rows.filter(r => r.date === predDate);
-    if (settledRows.length) {
-      // 已结算：显示买卖价格和收益
-      const wins = settledRows.filter(r => (r.ret||0) > 0).length;
-      html += `<div class="tbl-wrap" style="margin-top:10px"><table>
-        <tr><th>推荐日</th><th>标的</th><th>T+1买入收盘</th><th>T+2卖出收盘</th><th>收益</th></tr>` +
-        settledRows.map(r=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.buy}</td><td>${r.sell_close??'-'}</td>
-          <td class="${cls(r.ret)}">${r.ret>=0?'+':''}${r.ret}%</td></tr>`).join('') + `</table>
-        <div class="note">命中 ${wins}/${settledRows.length}</div></div>`;
-    } else {
-      // 未结算：只显示推荐标的（无收益数据）
-      html += `<div class="tbl-wrap" style="margin-top:10px"><table>
-        <tr><th>日期</th><th>标的</th><th>昨收</th><th>今收</th><th>收益</th></tr>` +
-        predTargets.map(t=>`<tr><td>${predDate}</td><td>${t.name||''}</td><td>${t['参考买入价(收盘)']||'-'}</td><td>—</td>
-          <td>待结算</td></tr>`).join('') + `</table>
-        <div class="note">昨日推荐待结算；执行窗口为T+1收盘买入，T+2收盘卖出</div></div>`;
-    }
-  } else if (stats && stats.count) {
-    // 兜底：如果没有 latest_prediction，用旧逻辑
+  if (settledRows.length) {
+    const wins = settledRows.filter(r => ((r.ret??r.ret_close??0) > 0)).length;
+    html += `<div class="warn" style="margin:10px 0 8px">已完成卖出结算批次（推荐日 ${settle.pred_date||settledPred.date||'—'}，T+1开盘买入，T+2收盘卖出）</div>
+      <div class="tbl-wrap"><table>
+      <tr><th>推荐日</th><th>标的</th><th>T+1买入开盘</th><th>T+2卖出收盘</th><th>收益</th></tr>` +
+      settledRows.map(r=>{
+        const ret = r.ret??r.ret_close??0;
+        const buy = r.buy_price??r.buy??'-';
+        const sell = r.sell_close??r.sell??'-';
+        return `<tr><td>${r.date||settle.pred_date||''}</td><td>${r.name}</td><td>${buy}</td><td>${sell}</td>${pct(ret)}</tr>`;
+      }).join('') + `</table>
+      <div class="note">命中 ${wins}/${settledRows.length}</div></div>`;
+  }
+  if (pendingPred && pendingPred.targets && pendingPred.targets.length && pendingPred.date !== settledPred.date) {
+    html += `<div class="warn" style="margin:12px 0 8px">滚动持仓/待结算批次（推荐日 ${pendingPred.date}）</div>
+      <div class="tbl-wrap"><table>
+      <tr><th>推荐日</th><th>标的</th><th>T日收盘参考</th><th>执行计划</th><th>状态</th></tr>` +
+      pendingPred.targets.map(x=>`<tr><td>${pendingPred.date}</td><td>${x.name||''}</td><td>${x['参考买入价(收盘)']??'-'}</td><td>T+1开盘买入，T+2收盘卖出</td><td>模拟持仓/待结算</td></tr>`).join('') +
+      `</table><div class="note">上一交易日标的已到买入窗口；不与已完成批次混算收益</div></div>`;
+  } else if (!settledRows.length && stats && stats.count) {
     const rows = stats.recent||[];
     if (rows.length) {
       const latest = rows[0].date;
       const dayRows = rows.filter(r => r.date === latest);
       html += `<div class="tbl-wrap" style="margin-top:10px"><table>
-        <tr><th>推荐日</th><th>标的</th><th>T+1买入收盘</th><th>T+2卖出收盘</th><th>收益</th></tr>` +
+        <tr><th>推荐日</th><th>标的</th><th>T+1买入开盘</th><th>T+2卖出收盘</th><th>收益</th></tr>` +
         dayRows.map(r=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.buy}</td><td>${r.sell_close??'-'}</td>
           <td class="${cls(r.ret)}">${r.ret>=0?'+':''}${r.ret}%</td></tr>`).join('') + `</table>
         <div class="note">仅展示最近一天推荐</div></div>`;
     }
-  } else {
-    html += `<div class="note">暂无已结算推荐记录（每天复盘/预测后，次日自动结算）</div>`;
+  } else if (!settledRows.length) {
+    html += `<div class="note">暂无已结算推荐记录（每天复盘/预测后，按T+1开盘买入、T+2收盘卖出结算）</div>`;
   }
   box.innerHTML = html;
 })();

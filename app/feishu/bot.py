@@ -33,6 +33,7 @@ from lark_oapi.api.im.v1 import (
 )
 
 from ..config import load_config, paths
+from ..report_text import execution_plan_text
 
 logger = logging.getLogger("feishu_bot")
 
@@ -305,43 +306,35 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
         if tstats.get("count"):
             summary += (f"\n📈 **累计命中率**：{tstats.get('win_rate')}%"
                         f"（{tstats.get('count')} 笔）｜平均 {tstats.get('avg_ret')}%")
-        # 昨日推荐标的（优先用 latest_prediction，确保显示昨天的推荐而非前天）
-        latest_pred = tracking.get("latest_prediction", {})
-        pred_targets = latest_pred.get("targets", [])
-        pred_date = latest_pred.get("date", "")
-        if pred_targets:
-            rows = (tstats.get("recent") or [])
-            settled_rows = [r for r in rows if r.get("date") == pred_date]
-            if settled_rows:
-                # 已结算：显示买卖价格和收益
-                wins = sum(1 for r in settled_rows if (r.get("ret") or 0) > 0)
-                prev_lines = [f"\n\n📈 **昨日推荐标的（{pred_date}）**"]
-                for r in settled_rows:
-                    s = "+" if (r.get("ret") or 0) >= 0 else ""
-                    prev_lines.append(
-                        f"· {r.get('name')}：买入 {r.get('buy_date') or 'T+1'}收盘 {r.get('buy')} → 卖出 "
-                        f"{r.get('sell_date') or 'T+2'}收盘 {r.get('sell_close')}（{s}{r.get('ret')}%）")
-                prev_lines.append(f"命中 {wins}/{len(settled_rows)}")
-                summary += "\n".join(prev_lines)
-            else:
-                # 未结算：只显示推荐标的（无收益数据）
-                prev_lines = [f"\n\n📈 **昨日推荐标的（{pred_date}，待结算）**"]
-                for t in pred_targets:
-                    buy = t.get("参考买入价(收盘)", "—")
-                    prev_lines.append(f"· {t.get('name')}（{t.get('code')}）：T日收盘参考 {buy}")
-                summary += "\n".join(prev_lines)
+        # 成熟批次和滚动持仓批次分开展示，避免“9/3还持仓、9/2已可结算”被混算。
+        settled_pred = tracking.get("settled_prediction") or {}
+        settled_rows = ((tracking.get("settle") or {}).get("results") or
+                        [r for r in (tstats.get("recent") or []) if r.get("date") == settled_pred.get("date")])
+        if settled_pred.get("date") and settled_rows:
+            wins = sum(1 for r in settled_rows if ((r.get("ret") or 0) > 0))
+            lines = [f"\n\n✅ **已完成卖出批次（推荐日 {settled_pred['date']}）**"]
+            for r in settled_rows:
+                sign = "+" if (r.get("ret") or 0) >= 0 else ""
+                lines.append(
+                    f"· {r.get('name')}：买入 {r.get('buy_date') or 'T+1'}开盘 {r.get('buy_price', r.get('buy'))} → 卖出 "
+                    f"{r.get('sell_date') or 'T+2'}收盘 {r.get('sell_close', r.get('sell'))}（{sign}{r.get('ret')}%）")
+            lines.append(f"命中 {wins}/{len(settled_rows)}")
+            summary += "\n".join(lines)
+        pending_pred = tracking.get("pending_prediction") or tracking.get("latest_prediction") or {}
+        pending_targets = pending_pred.get("targets") or []
+        if pending_pred.get("date") and pending_targets and pending_pred.get("date") != settled_pred.get("date"):
+            lines = [f"\n🔄 **滚动持仓/待结算批次（推荐日 {pending_pred['date']}）**"]
+            for t in pending_targets:
+                lines.append(f"· {t.get('name')}（{t.get('code')}）：T日收盘参考 {t.get('参考买入价(收盘)', '—')}｜{execution_plan_text(t.get('hold'))}")
+            summary += "\n".join(lines)
         if targets:
-            t_lines = ["\n**下一执行窗口标的（T+1收盘买入，T+2收盘卖出）**"]
+            t_lines = ["\n**下一执行窗口标的（T+1开盘买入，T+2收盘卖出）**"]
             for i, t in enumerate(targets, 1):
                 buy = t.get("参考买入价(收盘)")
                 conf = t.get("confidence") or "中"
-                stop = t.get("stop_loss")
-                sell = t.get("sell_target")
-                plan = f"｜止损 {stop}" if stop else ""
-                if sell:
-                    plan += f"｜目标 {sell}"
+                # 历史 JSON 可能仍保存旧口径的止损/目标价；用户界面只展示当前硬约束。
                 t_lines.append(f"{i}. **{t.get('name')}**（{t.get('code')}）· 置信{conf}"
-                               f"｜参考买入 {buy}{plan}\n   逻辑：{t.get('reason')}\n   ⚠️风险：{t.get('risk')}")
+                               f"｜参考买入 {buy}\n   逻辑：{t.get('reason')}\n   ⚠️风险：{t.get('risk')}")
             summary += "\n" + "\n".join(t_lines)
         summary += "\n⚠️ 仅供研究参考，不构成投资建议。详细图表见完整 HTML 报告。"
         comp = (report.get("compliance") or {}).get("summary") or {}

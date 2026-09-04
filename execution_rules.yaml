@@ -5,8 +5,8 @@
 # 规则变更：用户提出新要求 → 更新本文件 + RULES.md → git 提交。
 # ============================================================
 meta:
-  version: "1.8"
-  effective_date: "2026-09-02"
+  version: "1.9"
+  effective_date: "2026-09-04"
   issue_log: "docs/问题与修复记录.md (ISSUE-001 v1.1)"
   status: "权威规则（用户确认后生效）"
   priority_policy: "hard=红线必须满足；soft=建议项，尽量满足"
@@ -95,7 +95,7 @@ rules:
     category: 预测
     priority: hard
     title: "次日 3 只标的（固定策略）"
-    description: "7-10日强势板块+资金活跃+剔除ST+量比过滤+消息面+LLM研判，输出3只；报告日收盘后生成，T+1收盘买入，T+2收盘卖出"
+    description: "7-10日强势板块+资金活跃+剔除ST+量比过滤+消息面+LLM研判，输出3只；报告日收盘后生成，模拟实盘按T+1开盘买入，T+2收盘卖出"
     enforcement: "predict 流程固定；targets 数量=3（不足须注明原因）"
     on_violation: "注明原因，不静默改数量"
 
@@ -135,10 +135,10 @@ rules:
   - id: R14
     category: 跟踪评估
     priority: hard
-    title: "评估口径：T+1收盘买→T+2收盘卖（真实可执行）"
-    description: "推荐日T收盘后发布，用户最早T+1买入；评估必须按T+1收盘买入、T+2收盘卖出（用户确认 v1.5）"
-    enforcement: "ret=T+2收盘/T+1收盘-1；必须持久化buy_date/sell_date/reference_price；禁止用T日参考价冒充买入价"
-    on_violation: "口径不是T+1收盘→T+2收盘视为违规"
+    title: "评估口径：T+1开盘买→T+2收盘卖（模拟实盘）"
+    description: "推荐日T收盘后发布；当前不实盘，但策略数据必须按T+1开盘买入、T+2收盘卖出评估（用户确认 v1.9）"
+    enforcement: "ret=T+2收盘/T+1开盘-1；必须持久化buy_date/sell_date/reference_price/buy_price_type/sell_price_type；禁止用T日参考价或T+1收盘价冒充买入价"
+    on_violation: "口径不是T+1开盘→T+2收盘，或执行价缺失仍结算，视为违规"
 
   - id: R15
     category: 跟踪评估

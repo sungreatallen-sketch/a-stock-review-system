@@ -57,36 +57,58 @@ def _build_tracking(tr, settle_result, trade_date: str = None) -> dict:
                     "date": pred_date,
                     "targets": pred_data.get("targets", []),
                 }
-        # 补充：查询已结算结果（即使 settle_pending 返回"无可结算"，也要读取已结算数据）
-        if latest_pred and pred_date:
-            try:
-                conn = tr._conn()
+        # 查询最近一个“卖出日已到并完成结算”的批次。
+        # 这可能不是 latest_prediction：例如 9/4 复盘时，9/3 批次还在持有，
+        # 但 9/2 批次已经按 9/3开盘买、9/4收盘卖完成完整评估。
+        settled_prediction = None
+        try:
+            conn = tr._conn()
+            row = conn.execute(
+                "SELECT p.date, p.targets FROM predictions p "
+                "JOIN prediction_results r ON r.date=p.date "
+                "WHERE r.status='settled' AND p.date < ? "
+                "GROUP BY p.date, p.targets ORDER BY p.date DESC LIMIT 1",
+                (today_str,)
+            ).fetchone()
+            if row:
+                settled_date, targets_json = row
+                import json as _json
                 rows = conn.execute(
-                "SELECT target_code, target_name, buy_price, sell_close, ret_close, "
-                "ret, buy_date, sell_date, reference_price, status "
+                    "SELECT target_code, target_name, buy_price, sell_close, ret_close, "
+                    "ret, buy_date, sell_date, reference_price, buy_price_type, sell_price_type, status "
                     "FROM prediction_results WHERE date=? ORDER BY id",
-                    (pred_date,)
+                    (settled_date,)
                 ).fetchall()
-                conn.close()
+                settled_prediction = {
+                    "date": settled_date,
+                    "targets": _json.loads(targets_json).get("targets", []),
+                }
                 if rows:
-                    settle_detail = {
-                        "pred_date": pred_date,
+                    settle_result = {
+                        "pred_date": settled_date,
+                        "settled": len(rows),
+                        "settlement_rule": "T+1开盘买入→T+2收盘卖出",
                         "results": [
                             {
                                 "code": r[0], "name": r[1],
                                 "buy_price": r[2], "sell_price": r[3],
                                 "ret_close": r[4], "ret": r[5],
-                                "status": r[9],
                                 "buy_date": r[6], "sell_date": r[7],
                                 "reference_price": r[8],
+                                "buy_price_type": r[9] or "open",
+                                "sell_price_type": r[10] or "close",
+                                "status": r[11],
                             } for r in rows
                         ],
                     }
-                    # 覆盖 settle_result，显示真实的结算数据
-                    settle_result = settle_detail
-            except Exception as e:
-                log.warning("读取已结算结果失败: %s", str(e)[:100])
-        return {"settle": settle_result, "stats": stats, "latest_prediction": latest_pred}
+            conn.close()
+        except Exception as e:
+            log.warning("读取最近成熟结算批次失败: %s", str(e)[:100])
+        # 上一交易日预测可能仍在持仓中；它不是“已结算”，
+        # 前端/飞书需要同时展示 mature settlement 和 pending prediction。
+        pending_prediction = latest_pred if latest_pred and latest_pred.get("date") != (settled_prediction or {}).get("date") else None
+        return {"settle": settle_result, "stats": stats, "latest_prediction": latest_pred,
+                "settled_prediction": settled_prediction, "pending_prediction": pending_prediction}
     except Exception as e:
         log.warning("跟踪数据组装失败: %s", str(e)[:100])
         return {"settle": settle_result, "stats": {"count": 0}}

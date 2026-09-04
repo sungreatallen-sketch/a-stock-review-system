@@ -7,6 +7,7 @@ import logging
 from .candidate_pool import CandidatePool
 from .scoring import score_pool
 from .strategy import Strategy, compute_vol_ratio, STRATEGY_VERSION
+from ..report_text import EXECUTION_PLAN
 from .backtest import Backtest
 from .news import NewsScanner
 from .judge import judge
@@ -152,7 +153,7 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
             except Exception:
                 log.exception("R11补价后写回失败")
         for tgt in _existing.get("targets") or []:
-            tgt["hold"] = "T+1收盘买入，T+2收盘卖出"
+            tgt["hold"] = EXECUTION_PLAN
         try:
             Tracker(_paths()["data"]).record_prediction(_existing)
         except Exception:
@@ -236,12 +237,12 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
                 for k in ("hold", "持仓", "持仓时间"):
                     if tgt.get(k) and not tgt.get("hold"):
                         tgt["hold"] = tgt[k]
-                # 参考价是T日收盘价；真实执行窗口是T+1收盘买入、T+2收盘卖出。
+                # 参考价是T日收盘价；模拟实盘执行窗口是T+1开盘买入、T+2收盘卖出。
                 buy = tgt.get("参考买入价(收盘)")
                 if buy:
                     tgt.setdefault("stop_loss", round(buy * 0.97, 2))
                     tgt.setdefault("sell_target", round(buy * 1.03, 2))
-                    tgt.setdefault("hold", "T+1收盘买入，T+2收盘卖出")
+                    tgt.setdefault("hold", EXECUTION_PLAN)
         except Exception as e:
             log.exception("LLM 研判失败，回退规则结果")
             llm_result = {"market_view": _fallback_market_view(market), "targets": []}
@@ -252,11 +253,11 @@ def predict(cached, target_date: str = None, use_llm: bool = True) -> dict:
 
     for tgt in targets:
         # 执行窗口是用户确认的硬约束；历史预测里的旧文案也要统一，避免语义漂移。
-        tgt["hold"] = "T+1收盘买入，T+2收盘卖出"
+        tgt["hold"] = EXECUTION_PLAN
 
     return {
         "date": t,
-        "settlement_rule": "T+1收盘买入，T+2收盘卖出",
+        "settlement_rule": EXECUTION_PLAN,
         "strategy": "7-10日强势板块 + 个股强势 + 资金活跃 + 量比<2.0过滤 + 消息面 + LLM研判",
         "strategy_version": STRATEGY_VERSION,
         "filtered_out": strat.filtered,

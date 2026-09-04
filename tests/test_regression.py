@@ -228,8 +228,8 @@ class _FakeCached:
         return {"data": {"points": [{"time": day, "open": 10, "close": 11}]}}
 
 
-def test_t11_settlement_uses_t1_buy_and_t2_sell(tmp_path, monkeypatch):
-    """T日收盘后的推荐必须按T+1收盘买入、T+2收盘卖出售出评估。"""
+def test_t11_settlement_uses_t1_open_buy_and_t2_close_sell(tmp_path, monkeypatch):
+    """T日收盘后的推荐必须按T+1开盘买入、T+2收盘卖出评估。"""
     from datetime import datetime
     from app.ths_client import THSClient
 
@@ -238,11 +238,12 @@ def test_t11_settlement_uses_t1_buy_and_t2_sell(tmp_path, monkeypatch):
 
     def fake_kline(self, thscode, start, end, interval="1d"):
         end_s = end.isoformat()
+        open_price = 10.5 if end_s == "2026-09-02" else 13.0
         close = 11.0 if end_s == "2026-09-02" else 13.2
-        def item(day, close):
+        def item(day, open_price, close):
             return {"date_ms": int(datetime.fromisoformat(day).timestamp() * 1000),
-                    "close_price": close}
-        return [item(end_s, close)]
+                    "open_price": open_price, "close_price": close}
+        return [item(end_s, open_price, close)]
 
     monkeypatch.setattr(THSClient, "trading_days", fake_trading_days)
     monkeypatch.setattr(THSClient, "kline", fake_kline)
@@ -256,10 +257,12 @@ def test_t11_settlement_uses_t1_buy_and_t2_sell(tmp_path, monkeypatch):
     assert result["buy_date"] == "2026-09-02"
     assert result["sell_date"] == "2026-09-03"
     rows = tr.stats()["recent"]
-    assert rows[0]["buy"] == 11.0
+    assert rows[0]["buy"] == 10.5
     assert rows[0]["sell"] == 13.2
-    assert rows[0]["ret"] == 20.0
+    assert rows[0]["ret"] == 25.71
     assert rows[0]["reference_price"] == 10.0
+    assert rows[0]["buy_price_type"] == "open"
+    assert rows[0]["sell_price_type"] == "close"
 
 
 def test_t12_repeat_settlement_does_not_duplicate(tmp_path, monkeypatch):
@@ -270,8 +273,10 @@ def test_t12_repeat_settlement_does_not_duplicate(tmp_path, monkeypatch):
     monkeypatch.setattr(THSClient, "trading_days", lambda self, b, e: ["2026-09-01", "2026-09-02", "2026-09-03"])
     def fake_kline(self, code, s, e, interval="1d"):
         day = e.isoformat()
+        open_price = 9.5 if day == "2026-09-02" else 10.4
         close = 10.0 if day == "2026-09-02" else 11.0
-        return [{"date_ms": int(datetime.fromisoformat(day).timestamp() * 1000), "close_price": close}]
+        return [{"date_ms": int(datetime.fromisoformat(day).timestamp() * 1000),
+                 "open_price": open_price, "close_price": close}]
     monkeypatch.setattr(THSClient, "kline", fake_kline)
     tr = Tracker(tmp_path)
     tr.record_prediction({"date": "2026-09-01", "targets": [
@@ -283,6 +288,27 @@ def test_t12_repeat_settlement_does_not_duplicate(tmp_path, monkeypatch):
     count = conn.execute("SELECT COUNT(*) FROM prediction_results WHERE date='2026-09-01'").fetchone()[0]
     conn.close()
     assert count == 1
+
+
+def test_t12b_mature_batch_settles_when_newer_batch_is_pending(tmp_path, monkeypatch):
+    """9/3批次未到T+2时，不能挡住9/2批次在9/4完成T+2结算。"""
+    from datetime import datetime
+    from app.ths_client import THSClient
+
+    monkeypatch.setattr(THSClient, "trading_days", lambda self, b, e: ["2026-09-02", "2026-09-03", "2026-09-04"])
+    def fake_kline(self, code, s, e, interval="1d"):
+        day = e.isoformat()
+        return [{"date_ms": int(datetime.fromisoformat(day).timestamp() * 1000),
+                 "open_price": 10.0, "close_price": 11.0}]
+    monkeypatch.setattr(THSClient, "kline", fake_kline)
+    tr = Tracker(tmp_path)
+    target = [{"code": "600000", "name": "测试", "参考买入价(收盘)": 9.0}]
+    tr.record_prediction({"date": "2026-09-02", "targets": target})
+    tr.record_prediction({"date": "2026-09-03", "targets": target})
+    result = tr.settle_pending(_FakeCached(), today="2026-09-04")
+    assert result["date"] == "2026-09-02"
+    assert result["buy_date"] == "2026-09-03"
+    assert result["sell_date"] == "2026-09-04"
 
 
 def test_t13_auto_review_target_after_1600(monkeypatch):
@@ -382,6 +408,36 @@ def test_t17_tracking_settlement_fields_are_not_shifted(tmp_path):
     assert row["sell_date"] == "2026-09-03"
     assert row["reference_price"] == 10.0
     assert row["ret"] == 20.0
+
+
+def test_t18_legacy_execution_text_never_reaches_ui():
+    """历史预测里的旧口径字段不能覆盖当前 T+1开盘→T+2收盘 的用户展示。"""
+    from scripts.send_review import build_summary
+
+    report = {
+        "date": "2026-09-04",
+        "market_index": {},
+        "emotion": {},
+        "prediction": {
+            "targets": [{
+                "code": "600000", "name": "旧口径样例", "confidence": "中",
+                "参考买入价(收盘)": 10.0, "hold": "T+1收盘买入，T+2收盘卖出",
+                "stop_loss": 9.70, "sell_target": 10.30,
+            }],
+        },
+        "tracking": {
+            "settled_prediction": {"date": "2026-09-02"},
+            "pending_prediction": {
+                "date": "2026-09-03",
+                "targets": [{"code": "000001", "name": "持仓样例", "hold": "T+1收盘买入，T+2收盘卖出"}],
+            },
+        },
+    }
+    text = build_summary(report)
+    assert "T+1收盘买入" not in text
+    assert "T+1开盘买入，T+2收盘卖出" in text
+    assert "9.7" not in text
+    assert "10.3" not in text
 
 
 if __name__ == "__main__":

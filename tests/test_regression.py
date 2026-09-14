@@ -55,6 +55,7 @@ def _make_report(
         "emotion": emotion,
         "sector_rank": sectors,
         "prediction": {
+            "date": "2026-09-02",
             "status": "M3完整版",
             "market_view": "测试市场判断",
             "targets": targets,
@@ -314,13 +315,11 @@ def test_t12b_mature_batch_settles_when_newer_batch_is_pending(tmp_path, monkeyp
 def test_t13_auto_review_target_after_1600(monkeypatch):
     """16:03必须视为收盘后；不能因minute<30而回退到前一日。"""
     import scripts.auto_review as auto_review
+    from app.utils import MARKET_TZ
+    from datetime import datetime
 
-    class FakeDateTime(auto_review.datetime):
-        @classmethod
-        def now(cls):
-            return cls(2026, 9, 2, 16, 3)
-
-    monkeypatch.setattr(auto_review, "datetime", FakeDateTime)
+    fixed = datetime(2026, 9, 2, 16, 3, tzinfo=MARKET_TZ)
+    monkeypatch.setattr(auto_review, "market_now", lambda: fixed)
     assert auto_review.get_target_trade_date() == "2026-09-02"
 
 
@@ -357,6 +356,7 @@ def test_t15_closed_final_report_is_ready(tmp_path, monkeypatch):
         "date": "2026-09-02",
         "meta": {"generated_at": "2026-09-02T16:01:00"},
         "prediction": {
+            "date": "2026-09-02",
             "status": "M3完整版",
             "targets": [
                 {"code": "600000", "name": "A", "参考买入价(收盘)": 10.0},

@@ -72,27 +72,17 @@ class THSClient:
         ]
 
     def is_trading_day(self, d: date) -> bool:
-        """检查是否是交易日"""
-        # 周末直接排除
-        if d.weekday() >= 5:
-            return False
-        # 查 API 确认
-        days = self.trading_days(d, d)
-        return d.strftime("%Y-%m-%d") in days
+        from .utils import is_trading_day
+        return is_trading_day(d)
 
     def get_latest_trading_day(self, d: date = None) -> date:
-        """获取最近已收盘的交易日"""
-        d = d or date.today()
-        # 今天过15:30且交易日 → 今天；否则从昨天往前找
-        now = datetime.now()
-        if now.hour >= 15 and now.minute >= 30 and self.is_trading_day(d):
-            return d
-        # 从昨天往前找
-        for i in range(1, 15):
-            candidate = d - timedelta(days=i)
-            if self.is_trading_day(candidate):
-                return candidate
-        return d
+        from .utils import market_now, get_latest_closed_trading_day, get_latest_trading_day
+        now = market_now()
+        if d is None or d == now.date():
+            return get_latest_closed_trading_day(now)
+        if d > now.date():
+            raise ValueError('最近已收盘交易日不能从未来日期查找')
+        return get_latest_trading_day(d)
 
     # ── 行情快照 ──
     def snapshot(self, thscode: str = "") -> Dict:

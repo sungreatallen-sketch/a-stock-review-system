@@ -262,6 +262,12 @@ def _send_report_images(client: lark.Client, chat_id: str, html_path: str, messa
 
 
 def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "复盘", chat_id: str = None):
+    from ..review_delivery import delivery_lock
+    with delivery_lock(paths()['data']):
+        return _full_report_and_reply_locked(client, message_id, mode, chat_id)
+
+
+def _full_report_and_reply_locked(client: lark.Client, message_id: str, mode: str = "复盘", chat_id: str = None):
     """统一流程：复盘 + 标的预测 一体，回复合并卡片 + 完整 HTML 报告链接"""
     try:
         reply_text(client, message_id, "收到！正在生成完整报告（收盘复盘 + 次日标的预测），约 20~40 秒…")
@@ -362,7 +368,12 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
                             "或用 Safari 打开：`" + links["ip"] + "`"},
             ],
         }
-        reply_card(client, message_id, card)
+        delivered = reply_card(client, message_id, card)
+        if not delivered:
+            logger.error('报告卡片未发送成功，不记录成功状态')
+            return
+        from ..review_delivery import mark_report_delivered
+        mark_report_delivered(_paths()['data'], report, 'manual-feishu')
         # 附加：报告图片直发飞书（解决 VPN/跨网段打不开 HTML 的问题）
         _send_report_images(client, chat_id, str(_paths()["reports"] / f"{date_str}.html"), message_id=message_id)
         logger.info("完整报告(%s)已回复: %s", mode, date_str)
@@ -374,10 +385,10 @@ def _full_report_and_reply(client: lark.Client, message_id: str, mode: str = "�
 def _review_and_reply(client: lark.Client, message_id: str, chat_id: str):
     """复盘：完整报告（复盘+预测一体）"""
     from ..utils import is_trading_day, get_latest_trading_day
-    from datetime import date
+    from ..utils import market_now
     
     # 交易日检查
-    today = date.today()
+    today = market_now().date()
     if not is_trading_day(today):
         latest_trade = get_latest_trading_day(today)
         warning_msg = f"⚠️ 今天不是交易日（{today.strftime('%Y-%m-%d %A')}）" + "\n" + f"最近交易日是 {latest_trade}，将使用该日数据。" + "\n" + "正在生成报告..."

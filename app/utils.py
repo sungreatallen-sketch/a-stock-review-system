@@ -1,103 +1,73 @@
-"""工具函数：交易日检查、日期处理等"""
-from datetime import date, timedelta
+"""A股统一交易日历。交易所年度休市表为本地权威快照；未知年份不猜测。"""
+from datetime import date, datetime, time, timedelta
+from functools import lru_cache
+from pathlib import Path
+from zoneinfo import ZoneInfo
+import json
 import logging
 
-log = logging.getLogger("utils")
+log = logging.getLogger('utils')
+MARKET_TZ = ZoneInfo('Asia/Shanghai')
+CALENDAR_DIR = Path(__file__).resolve().parents[1] / 'config'
 
-# 2026年法定假日（A股休市）
-# 注：这里只列出主要假日，实际使用时可能需要更完整的列表
-HOLIDAYS_2026 = {
-    # 元旦
-    date(2026, 1, 1),
-    # 春节（1月26日-2月1日）
-    date(2026, 1, 26), date(2026, 1, 27), date(2026, 1, 28),
-    date(2026, 1, 29), date(2026, 1, 30), date(2026, 1, 31),
-    date(2026, 2, 1),
-    # 清明节（4月4日-6日）
-    date(2026, 4, 4), date(2026, 4, 5), date(2026, 4, 6),
-    # 劳动节（5月1日-5日）
-    date(2026, 5, 1), date(2026, 5, 2), date(2026, 5, 3),
-    date(2026, 5, 4), date(2026, 5, 5),
-    # 端午节（5月31日-6月2日）
-    date(2026, 5, 31), date(2026, 6, 1), date(2026, 6, 2),
-    # 中秋节（9月19日-21日）
-    date(2026, 9, 19), date(2026, 9, 20), date(2026, 9, 21),
-    # 国庆节（10月1日-7日）
-    date(2026, 10, 1), date(2026, 10, 2), date(2026, 10, 3),
-    date(2026, 10, 4), date(2026, 10, 5), date(2026, 10, 6),
-    date(2026, 10, 7),
-}
+class CalendarUnavailable(RuntimeError):
+    pass
 
+def market_now() -> datetime:
+    return datetime.now(MARKET_TZ)
+
+@lru_cache(maxsize=8)
+def _calendar(year: int):
+    fp = CALENDAR_DIR / f'trading_calendar_{year}.json'
+    try:
+        data = json.loads(fp.read_text(encoding='utf-8'))
+        if data.get('year') != year or not data.get('source_url') or not data.get('verified_at'):
+            raise ValueError('缺少年份或来源信息')
+        if data.get('coverage_start') != f'{year}-01-01' or data.get('coverage_end') != f'{year}-12-31':
+            raise ValueError('非完整年度覆盖')
+        closed = frozenset(date.fromisoformat(x) for x in data['closed_dates'])
+        if not closed or any(d.year != year for d in closed):
+            raise ValueError('休市日期无效')
+        return closed
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise CalendarUnavailable(f'{year}年交易日历缺失或无效，需核对交易所公告并更新 {fp.name}') from exc
 
 def is_trading_day(d: date = None) -> bool:
-    """检查是否是交易日（排除周末和法定假日）
-    
-    Args:
-        d: 要检查的日期，默认为今天
-        
-    Returns:
-        True 如果是交易日，False 如果是周末或假日
-    """
-    d = d or date.today()
-    
-    # 排除周末
-    if d.weekday() >= 5:  # 5=周六, 6=周日
-        return False
-    
-    # 排除法定假日
-    if d in HOLIDAYS_2026:
-        return False
-    
-    return True
+    d = d or market_now().date()
+    closed = _calendar(d.year)
+    return d.weekday() < 5 and d not in closed
 
-
-def get_latest_trading_day(d: date = None, max_lookback: int = 10) -> date:
-    """获取最近的交易日（向前查找）
-    
-    Args:
-        d: 起始日期，默认为今天
-        max_lookback: 最大回溯天数，避免无限循环
-        
-    Returns:
-        最近的交易日
-    """
-    d = d or date.today()
+def get_latest_trading_day(d: date = None, max_lookback: int = 31) -> date:
+    """包含起始日，向前寻找交易日；不代表该日已经收盘。"""
+    d = d or market_now().date()
     for _ in range(max_lookback):
-        if is_trading_day(d):
-            return d
-        d = d - timedelta(days=1)
-    
-    # 如果找不到交易日，返回原日期并记录警告
-    log.warning("在 %d 天内未找到交易日，返回原日期: %s", max_lookback, d)
-    return d
+        if is_trading_day(d): return d
+        d -= timedelta(days=1)
+    raise CalendarUnavailable(f'{max_lookback}天内未找到交易日，禁止返回未经验证的日期')
 
-
-def get_next_trading_day(d: date = None, max_lookahead: int = 10) -> date:
-    """获取下一个交易日（向后查找）
-    
-    Args:
-        d: 起始日期，默认为今天
-        max_lookahead: 最大前瞻天数
-        
-    Returns:
-        下一个交易日
-    """
-    d = d or date.today()
+def get_next_trading_day(d: date = None, max_lookahead: int = 31) -> date:
+    d = d or market_now().date()
     for _ in range(max_lookahead):
-        d = d + timedelta(days=1)
-        if is_trading_day(d):
-            return d
-    
-    log.warning("在 %d 天内未找到下一个交易日，返回原日期: %s", max_lookahead, d)
-    return d
+        d += timedelta(days=1)
+        if is_trading_day(d): return d
+    raise CalendarUnavailable(f'{max_lookahead}天内未找到下一交易日')
 
+def get_latest_closed_trading_day(now: datetime = None) -> date:
+    now = now or market_now()
+    if now.tzinfo is not None: now = now.astimezone(MARKET_TZ)
+    d = now.date()
+    if now.time() >= time(15, 30) and is_trading_day(d): return d
+    return get_latest_trading_day(d - timedelta(days=1))
+
+def trading_days_between(begin: date, end: date) -> list[str]:
+    days = []
+    while begin <= end:
+        if is_trading_day(begin): days.append(begin.isoformat())
+        begin += timedelta(days=1)
+    return days
 
 def format_trade_date(d: date = None) -> str:
-    """格式化交易日期为 YYYYMMDD 字符串"""
-    d = d or date.today()
-    return d.strftime("%Y%m%d")
-
+    return (d or market_now().date()).strftime('%Y%m%d')
 
 def parse_trade_date(date_str: str) -> date:
-    """解析 YYYYMMDD 格式的日期字符串"""
-    return date.strptime(date_str, "%Y%m%d")
+    return datetime.strptime(date_str, '%Y%m%d').date()

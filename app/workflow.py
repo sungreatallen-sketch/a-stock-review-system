@@ -185,10 +185,11 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
     同日已生成报告且完整时直接复用（避免重复采集/预测浪费 token）；不完整则重生成"""
     from datetime import date
     from .rules import preload_rules
-    from .utils import is_trading_day, get_latest_trading_day
+    from .utils import is_trading_day, get_latest_trading_day, get_latest_closed_trading_day, market_now
     
     # 交易日检查
-    today_date = date.today()
+    now = market_now()
+    today_date = now.date()
     if not is_trading_day(today_date):
         latest_trade = get_latest_trading_day(today_date)
         log.warning("今天 %s 不是交易日，使用最近交易日: %s", today_date, latest_trade)
@@ -198,7 +199,16 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
     p = paths()
     st = Storage(p["data"], p["reports"])
     settle_result = None
-    today = str(date.today())
+    today = today_date.isoformat()
+    from datetime import time as _time
+    from .review_delivery import final_report
+    if now.time() < _time(15, 30) or not is_trading_day(today_date):
+        latest = get_latest_closed_trading_day(now).isoformat()
+        saved = st.load_report(latest)
+        if not saved or not final_report(saved, latest):
+            raise RuntimeError(f'{latest}没有可用历史终版；请在交易日收盘后复盘')
+        log.info('手动查看历史终版 %s；不生成历史预测、不执行盘中结算', latest)
+        return saved
 
     # 同日内重复请求：仅当报告完整时才复用
     try:
@@ -216,7 +226,7 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
         latest_day = pts[-1] if pts else today
         existing = st.load_report(latest_day)
         gen_day = ((existing or {}).get("meta") or {}).get("generated_at", "")[:10]
-        if existing and gen_day == today and _report_ok(existing) and not force:
+        if existing and final_report(existing, today) and _report_ok(existing) and not force:
             log.info("今日报告已存在且完整(%s)，直接复用", latest_day)
             if auto_track:
                 from .predict.track import Tracker
@@ -235,6 +245,8 @@ def run_review(include_prediction: bool = True, auto_track: bool = True, force: 
     report = build_report(collector_result)
     trade_date = report.get("date")  # 使用 collector 找到的交易日
     log.info("collector 找到交易日: %s", trade_date)
+    if trade_date != today:
+        raise RuntimeError(f'当日复盘数据日期不符：期望{today}，采集返回{trade_date}，停止生成预测')
     
     if include_prediction:
         from .predict.track import Tracker

@@ -1,7 +1,4 @@
-"""自动复盘核心逻辑：确定目标交易日 → 未复盘则执行 → 发飞书
-关键：只在"当天已收盘(>=15:30)"时才对当天复盘；凌晨/盘前用最近已收盘交易日
-避免凌晨生成"当天预测"（当天还没收盘，数据不完整/错误）
-"""
+"""自动复盘：交易日北京时间16:00后处理当日终版；不跨日补发。"""
 import json
 import logging
 import os
@@ -13,7 +10,8 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.config import paths
-from app.utils import is_trading_day, get_latest_trading_day
+from app.utils import CalendarUnavailable, market_now
+from app.review_delivery import (automatic_target, final_report, report_delivered, delivery_lock)
 from scripts.check_data_sources import (
     check_direct_mcp, check_mcp, check_ths, check_tdx_direct,
 )
@@ -23,23 +21,8 @@ log = logging.getLogger("auto_review")
 
 
 def get_target_trade_date():
-    """确定目标交易日（最近已收盘的交易日）：
-    - 今天已过15:30 且是交易日 → 今天
-    - 否则（凌晨/盘前/非交易日）→ 从昨天往前找最近交易日（今天未收盘不算）
-    """
-    from datetime import timedelta
-    now = datetime.now()
-    today = now.date()
-    from datetime import time as _time
-    if now.time() >= _time(15, 30) and is_trading_day(today):
-        return today.strftime("%Y-%m-%d")
-    # 今天未收盘，从昨天往前找最近已收盘交易日
-    d = today - timedelta(days=1)
-    for _ in range(10):
-        if is_trading_day(d):
-            return d.strftime("%Y-%m-%d")
-        d = d - timedelta(days=1)
-    return today.strftime("%Y-%m-%d")  # 兜底
+    """自动任务只处理北京时间当天16:00后的交易日，不跨日补发。"""
+    return automatic_target(market_now())
 
 
 def report_complete(date_str: str) -> bool:
@@ -57,22 +40,10 @@ def report_complete(date_str: str) -> bool:
 
 
 def final_report_ready(date_str: str) -> bool:
-    """收盘后的正式报告才算终版。
-    盘中生成的报告可能缺 T 日收盘参考价，也绝不能当作 16:00 终版推送。"""
-    if not report_complete(date_str):
-        return False
-    targets = ((json.loads((paths()["reports"] / f"{date_str}.json").read_text(encoding="utf-8"))
-                .get("prediction") or {}).get("targets") or [])
-    if not targets or any(not t.get("参考买入价(收盘)") for t in targets):
-        return False
-    meta = ((json.loads((paths()["reports"] / f"{date_str}.json").read_text(encoding="utf-8"))
-             .get("meta") or {}))
-    generated = str(meta.get("generated_at") or "")
-    if generated[:10] != date_str:
-        return False
     try:
-        return datetime.fromisoformat(generated).time() >= datetime.strptime("15:30", "%H:%M").time()
-    except Exception:
+        fp = paths()['reports'] / f'{date_str}.json'
+        return final_report(json.loads(fp.read_text(encoding='utf-8')), date_str)
+    except (OSError, ValueError, TypeError):
         return False
 
 
@@ -82,21 +53,12 @@ def sent_flag(date_str: str) -> str:
 
 
 def report_sent(date_str: str) -> bool:
-    """sent flag 必须绑定当前终版 report 的 generated_at，防止盘中旧版被误认为已终发。"""
-    flag = Path(sent_flag(date_str))
-    if not flag.exists():
-        return False
-    try:
-        report = json.loads((paths()["reports"] / f"{date_str}.json").read_text(encoding="utf-8"))
-        generated = str((report.get("meta") or {}).get("generated_at") or "")
-        return bool(generated) and flag.read_text(encoding="utf-8").strip() == generated
-    except Exception:
-        return False
+    return report_delivered(paths()['data'], date_str)
 
 
 def _alert_once(kind: str, message: str):
     """同一数据源异常一天只提醒一次，避免半小时轮询刷屏。"""
-    fp = paths()["data"] / f"data_source_alert_{datetime.now().strftime('%Y-%m-%d')}.json"
+    fp = paths()["data"] / f"data_source_alert_{market_now().strftime('%Y-%m-%d')}.json"
     state = {}
     try:
         if fp.exists():
@@ -106,7 +68,7 @@ def _alert_once(kind: str, message: str):
     if state.get(kind):
         return
     send_alert(message)
-    state[kind] = datetime.now().isoformat(timespec="seconds")
+    state[kind] = market_now().isoformat(timespec="seconds")
     fp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -130,16 +92,28 @@ def _settle_pending():
 
 
 def run_auto_review():
-    target = get_target_trade_date()
-    log.info("目标交易日: %s", target)
+    try:
+        target = get_target_trade_date()
+        if target is None:
+            log.info('非交易日或未到北京时间16:00，跳过自动复盘；不补发历史报告')
+            return
+        with delivery_lock(paths()['data'], blocking=False) as acquired:
+            if not acquired:
+                log.info('其他复盘/发送任务正在执行，跳过本次轮询')
+                return
+            # 等待或竞争结束后再确认日期，防止午夜跨日。
+            if get_target_trade_date() != target:
+                return
+            if report_sent(target):
+                log.info('%s 已成功发送终版，跳过（报告更新不触发重发）', target)
+                return
+            _run_today(target)
+    except (CalendarUnavailable, ValueError, OSError):
+        log.exception('交易日历或发送状态异常，停止自动复盘，需检查配置/记录')
 
-    # 16:00 才是终版推送时间。15:30 后的 StartInterval 轮询不提前抢跑；
-    # 若 16:00 错过，后面任意时间触发仍会补执行。
-    now = datetime.now()
-    if str(now.date()) == target and now.time() < datetime.strptime("16:00", "%H:%M").time():
-        log.info("%s 已收盘但未到 16:00 终版推送时间，等待定时触发", target)
-        return
 
+def _run_today(target):
+    log.info('目标交易日: %s', target)
     already_sent = final_report_ready(target) and report_sent(target)
     if not already_sent:
         health = {
@@ -191,39 +165,23 @@ def run_auto_review():
                 "⚠️ 同花顺API连接失败，自动复盘将尝试WorkBuddy MCP兜底。"
             )
 
-    # 已有终版报告 → 补发；盘中旧报告必须强制刷新，绝不能重复推送旧预测。
-    if final_report_ready(target):
-        if not report_sent(target):
-            _settle_pending()
-            log.info("%s 已复盘但未发送飞书，补发", target)
-            proc = subprocess.run([sys.executable, "scripts/send_review.py", "--date", target], check=False)
-            if proc.returncode == 0:
-                report = json.loads((paths()["reports"] / f"{target}.json").read_text(encoding="utf-8"))
-                Path(sent_flag(target)).write_text(
-                    str((report.get("meta") or {}).get("generated_at") or ""), encoding="utf-8")
-        else:
-            log.info("%s 已复盘且已发送，跳过", target)
+    if get_target_trade_date() != target:
+        log.info('等待数据源期间已跨日，取消自动任务')
         return
-
-    # 无终版报告（不存在，或只是盘中旧版）→ 执行完整复盘
-    if os.path.exists(sent_flag(target)):
-        os.remove(sent_flag(target))
-    log.info("%s 无收盘后终版报告，执行完整复盘...", target)
-    _settle_pending()
-    subprocess.run([sys.executable, "run_cli.py", "review", "--force"], check=False)
-
-    # 发飞书
-    if report_complete(target):
-        proc = subprocess.run([sys.executable, "scripts/send_review.py", "--date", target], check=False)
-        if proc.returncode == 0:
-            report = json.loads((paths()["reports"] / f"{target}.json").read_text(encoding="utf-8"))
-            Path(sent_flag(target)).write_text(
-                str((report.get("meta") or {}).get("generated_at") or ""), encoding="utf-8")
-            log.info("%s 自动复盘完成并已发送", target)
-        else:
-            log.error("%s 自动复盘飞书发送失败，等待下次补发", target)
-    else:
-        log.error("%s 复盘后报告仍不完整，未发送", target)
+    if not final_report_ready(target):
+        log.info('%s 尚无终版，执行当日复盘', target)
+        _settle_pending()
+        proc = subprocess.run([sys.executable, 'run_cli.py', 'review', '--force'],
+                              cwd=str(Path(__file__).resolve().parents[1]), check=False)
+        if proc.returncode != 0:
+            log.error('复盘失败，禁止发送旧报告')
+            return
+    if not final_report_ready(target):
+        log.error('%s 日期/终版/预测不合格，禁止发送', target)
+        return
+    from scripts.send_review import send_report, CHAT_DEFAULT
+    if not send_report(target, CHAT_DEFAULT, automatic=True):
+        log.error('%s 发送失败，等待当日后续重试', target)
 
 
 if __name__ == "__main__":

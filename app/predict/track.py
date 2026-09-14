@@ -156,47 +156,22 @@ class Tracker:
 
     def settle_pending(self, cached, today: str = None) -> dict:
         """自动结算：找最早一笔未结算预测；只有T+2卖出日已出现才完整结算。"""
-        from datetime import date as _date
-        today_str = today or str(_date.today())
-        # 找昨天及之前的未结算预测（今天的预测今天不能结算）
+        from datetime import date as _date, time as _time
+        from ..utils import market_now, trading_days_between, CalendarUnavailable
+        now = market_now()
+        today_str = today or now.date().isoformat()
+        if today_str > now.date().isoformat():
+            return {'note': '不能结算未来日期'}
         row = self._find_settleable_prediction(today_str)
         if not row:
-            return {"note": "无可结算预测"}
+            return {'note': '无可结算预测'}
         pred_date = row[0]
-        conn = self._conn()
-
-        # 找次日交易日（THS 优先 → MCP → ego 兜底）
         today = today_str
-        pts = []
-        # THS 优先
         try:
-            from ..ths_client import get_ths_client
-            from datetime import date as _d, timedelta as _td
-            ths = get_ths_client()
-            ths_days = ths.trading_days(_d.fromisoformat(pred_date), _d.fromisoformat(today) + _td(days=1))
-            if ths_days:
-                pts = sorted(ths_days)
-                log.info("THS 交易日: %s", pts[-3:] if len(pts) > 3 else pts)
-        except Exception as e:
-            log.warning("THS 交易日历失败: %s", str(e)[:100])
-        # MCP 兜底
-        if not pts:
-            try:
-                from .backtest import INDEX_TICKER
-                resp = cached.call("tongzhou-fin-research_fin_data__get_kline_series",
-                                   {"ticker": INDEX_TICKER, "market": "index",
-                                    "end_date": today, "limit": 12})
-                pts = sorted({p["time"] for p in ((resp or {}).get("data") or {}).get("points") or []})
-                if pred_date in pts:
-                    pts = pts[pts.index(pred_date):]
-            except Exception as e:
-                log.warning("MCP 交易日历失败，切 ego 兜底: %s", str(e)[:100])
-        # ego 兜底
-        if not pts:
-            from .alt_data import EgoOpenPrices
-            from ..config import paths as get_paths
-            ego = EgoOpenPrices(get_paths()["data"] / "ego_kline.db")
-            pts = ego.fetch_index_dates(today, limit=12)
+            pts = trading_days_between(_date.fromisoformat(pred_date), _date.fromisoformat(today))
+        except CalendarUnavailable as exc:
+            log.error('结算暂停: %s', exc)
+            return {'date': pred_date, 'note': str(exc)}
         if pred_date not in pts:
             return {"date": pred_date, "note": "预测日非交易日"}
         idx = pts.index(pred_date)
@@ -211,6 +186,9 @@ class Tracker:
         if sell_date > today:
             return {"date": pred_date, "buy_date": buy_date, "sell_date": sell_date,
                     "note": "尚未到T+2卖出日，暂不结算"}
+        if sell_date == now.date().isoformat() and now.time() < _time(15, 30):
+            return {'date': pred_date, 'buy_date': buy_date, 'sell_date': sell_date,
+                    'note': '卖出日尚未到收盘数据确认时间15:30，暂不结算'}
         if buy_date == pred_date or sell_date == buy_date:
             return {"date": pred_date, "note": "执行日数据异常"}
 

@@ -105,7 +105,27 @@ def build_summary(d: dict) -> str:
     return summary
 
 
-def send_report(date_str: str, chat_id: str) -> bool:
+def send_report(date_str: str, chat_id: str, automatic: bool = True) -> bool:
+    from app.review_delivery import automatic_target, delivery_lock, report_delivered
+    from app.utils import CalendarUnavailable
+    try:
+        with delivery_lock(paths()['data']) as acquired:
+            if not acquired:
+                return False
+            if automatic:
+                if automatic_target() != date_str:
+                    log.info('自动发送仅允许当日16:00后的报告，跳过 %s', date_str)
+                    return True
+                if report_delivered(paths()['data'], date_str):
+                    log.info('%s 已发送，跳过', date_str)
+                    return True
+            return _send_report_locked(date_str, chat_id, automatic)
+    except (CalendarUnavailable, ValueError, OSError):
+        log.exception('日期或发送记录异常，停止发送')
+        return False
+
+
+def _send_report_locked(date_str: str, chat_id: str, automatic: bool) -> bool:
     p = paths()
     fp = p["reports"] / f"{date_str}.json"
     if not fp.exists():
@@ -113,6 +133,10 @@ def send_report(date_str: str, chat_id: str) -> bool:
         return False
     with open(fp, encoding="utf-8") as f:
         d = json.load(f)
+    from app.review_delivery import final_report, automatic_target, mark_report_delivered
+    if not final_report(d, date_str):
+        log.error('报告日期或终版校验失败，禁止发送: %s', date_str)
+        return False
     summary = build_summary(d)
     links = {}
     # 生成链接
@@ -132,7 +156,13 @@ def send_report(date_str: str, chat_id: str) -> bool:
              "content": "数据来源：东财公开数据 + 通达信/同舟/Wind MCP 交叉验证；消息面：同舟 doc_search。"},
         ],
     }
+    if automatic and automatic_target() != date_str:
+        log.info('发送前已跨日，取消')
+        return True
     ok = send_card(chat_id, card)
+    if not ok:
+        return False
+    mark_report_delivered(p['data'], d, 'automatic' if automatic else 'manual-cli')
     # 发送报告图片
     try:
         from app.feishu.bot import _send_report_images
@@ -147,9 +177,10 @@ def send_report(date_str: str, chat_id: str) -> bool:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    from datetime import date
+    from app.utils import market_now
     ap = argparse.ArgumentParser()
-    ap.add_argument("--date", default=str(date.today()))
+    ap.add_argument("--date", default=market_now().date().isoformat())
     ap.add_argument("--chat", default=CHAT_DEFAULT)
+    ap.add_argument("--manual", action="store_true", help="明确手动查看历史终版；不用于定时任务")
     args = ap.parse_args()
-    sys.exit(0 if send_report(args.date, args.chat) else 1)
+    sys.exit(0 if send_report(args.date, args.chat, automatic=not args.manual) else 1)

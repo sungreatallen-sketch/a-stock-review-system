@@ -7,7 +7,8 @@ log = logging.getLogger("strategy")
 
 MAX_VOL_RATIO = 2.0   # 量比超过该值视为"放巨量"，剔除（回测最优参数）
 TOP_PRE = 10          # 先取基础打分前 N 做量比检查
-STRATEGY_VERSION = "v1.1"   # v1.0→v1.1 唯一变化：过滤不可交易的涨停股票
+STRATEGY_VERSION = "v1.2"   # v1.1→v1.2 唯一变化：修复ego板块排名字段传递
+                            # v1.0→v1.1 唯一变化：过滤不可交易的涨停股票
 
 
 def _kline_points(resp):

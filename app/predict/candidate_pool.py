@@ -85,6 +85,9 @@ class CandidatePool:
                 self._sector_window = "10日(ego)"
                 for s in secs:
                     s["industry"] = s["name"]
+                    # ego源返回rank字段，标准化为sector_rank供下游评分使用
+                    if "sector_rank" not in s and "rank" in s:
+                        s["sector_rank"] = s["rank"]
                 return secs
         except Exception as e:
             log.warning("ego 10日板块失败: %s", str(e)[:120])

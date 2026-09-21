@@ -174,6 +174,8 @@ cd /Users/yage/Documents/ashare-v1.2-fix-sector-rank
 
 ## 八、后续部署与回滚步骤草案
 
+> 详细方案见 `ROLLBACK_PLAN.md`
+
 ### 部署步骤（本批不执行）
 
 1. 将`fix/sector-rank-v1.2`分支合并到`main`
@@ -196,6 +198,15 @@ git revert <merge-commit-hash>
 launchctl kickstart -k gui/$(id -u)/com.ashare.bot
 launchctl kickstart -k gui/$(id -u)/com.ashare.server
 ```
+
+### 生产基线
+
+| 项目 | 值 |
+|---|---|
+| 当前分支 | `main` |
+| 当前提交 | `c7b32e2` |
+| candidate_pool.py校验值 | `74e04b2785ac3869a6e1620a824993ea` |
+| strategy.py校验值 | `f7183e28a9a644a300265d96a7c3b970` |
 
 ---
 

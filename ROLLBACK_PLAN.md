@@ -116,50 +116,86 @@ sqlite3 /Users/yage/Documents/我的预测系统/data/a_share.db ".backup '/path
 
 ## 四、需要回滚的情况
 
-### 必须回滚的情况
+### 必须回滚的情况（硬指标）
 
-1. **评分异常**：板块分全部为6或全部为20（映射逻辑错误）
-2. **候选池崩溃**：`_top_sectors()`抛出异常导致预测失败
-3. **性能严重下降**：候选池构建时间增加50%以上
-4. **数据不一致**：新旧版本推荐结果差异超过合理范围
+| 故障现象 | 判断方法 | 阈值 |
+|---|---|---|
+| 板块分异常 | 检查报告中板块分分布 | 全部为6或全部为20 |
+| 候选池崩溃 | 检查日志`candidate_pool`ERROR | 任何异常 |
+| 服务不可用 | `curl http://127.0.0.1:8787/report/$(date +%Y-%m-%d)` | 返回非200 |
+| 飞书推送失败 | 检查日志`bot`ERROR | 连续3次失败 |
+| 性能严重下降 | 候选池构建时间 | >5秒（正常<1秒） |
 
 ### 不需要回滚的情况
 
 1. **评分变化**：板块分从6变为其他值（这是预期行为）
 2. **推荐变化**：Top3股票与之前不同（这是预期行为）
 3. **命中率波动**：单日命中率变化（正常波动）
+4. **候选数变化**：候选池数量变化（正常波动）
 
 ---
 
-## 五、回滚步骤
+## 五、部署与回滚步骤
 
-### 代码回滚
+### 部署步骤（需用户授权）
 
 ```bash
 # 1. 切换到生产目录
 cd /Users/yage/Documents/我的预测系统
 
-# 2. 回滚代码
-git revert <merge-commit-hash>
+# 2. 备份当前代码
+cp app/predict/candidate_pool.py app/predict/candidate_pool.py.bak.$(date +%Y%m%d%H%M%S)
+cp app/predict/strategy.py app/predict/strategy.py.bak.$(date +%Y%m%d%H%M%S)
+
+# 3. 从隔离目录复制修复文件
+cp /Users/yage/Documents/ashare-v1.2-fix-sector-rank/app/predict/candidate_pool.py app/predict/
+cp /Users/yage/Documents/ashare-v1.2-fix-sector-rank/app/predict/strategy.py app/predict/
+
+# 4. 验证文件校验值
+md5 -r app/predict/candidate_pool.py app/predict/strategy.py
+# 应显示修复后的校验值
+
+# 5. 重启服务
+launchctl kickstart -k gui/$(id -u)/com.ashare.bot
+launchctl kickstart -k gui/$(id -u)/com.ashare.server
+
+# 6. 验证部署
+grep "STRATEGY_VERSION" app/predict/strategy.py
+# 应显示：STRATEGY_VERSION = "v1.2"
+
+# 7. 运行一次完整预测验证
+/Users/yage/Documents/我的预测系统/.venv/bin/python run_cli.py predict --force
+
+# 8. 检查报告中板块分是否不再全部为6
+sqlite3 data/a_share.db "SELECT json_extract(targets, '$.targets[0].factors.板块') FROM predictions ORDER BY date DESC LIMIT 3;"
+```
+
+### 回滚步骤
+
+```bash
+# 1. 切换到生产目录
+cd /Users/yage/Documents/我的预测系统
+
+# 2. 恢复备份文件
+cp app/predict/candidate_pool.py.bak.* app/predict/candidate_pool.py
+cp app/predict/strategy.py.bak.* app/predict/strategy.py
 
 # 3. 验证回滚
 md5 -r app/predict/candidate_pool.py app/predict/strategy.py
 # 应恢复到原始校验值：
 # 74e04b2785ac3869a6e1620a824993ea candidate_pool.py
 # f7183e28a9a644a300265d96a7c3b970 strategy.py
-```
 
-### 服务重启
-
-```bash
-# 重启飞书机器人
+# 4. 重启服务
 launchctl kickstart -k gui/$(id -u)/com.ashare.bot
-
-# 重启报告服务
 launchctl kickstart -k gui/$(id -u)/com.ashare.server
+
+# 5. 确认恢复
+grep "STRATEGY_VERSION" app/predict/strategy.py
+# 应显示：STRATEGY_VERSION = "v1.1"
 ```
 
-### 确认恢复
+### 确认恢复验证清单
 
 ```bash
 # 1. 检查服务状态
@@ -167,13 +203,16 @@ launchctl list | grep ashare
 
 # 2. 检查版本号
 grep "STRATEGY_VERSION" app/predict/strategy.py
-# 应显示：STRATEGY_VERSION = "v1.1"
 
 # 3. 运行回归测试
 /Users/yage/Documents/我的预测系统/.venv/bin/python -m pytest tests/ -v
 
 # 4. 验证报告服务
-curl -s http://127.0.0.1:8787/report/2026-09-21 | head -20
+curl -s http://127.0.0.1:8787/report/$(date +%Y-%m-%d) | head -20
+
+# 5. 检查日志无异常
+tail -20 /Users/yage/ashare-logs/bot.log | grep -i error
+tail -20 /Users/yage/ashare-logs/server.log | grep -i error
 ```
 
 ---
@@ -193,6 +232,19 @@ curl -s http://127.0.0.1:8787/report/2026-09-21 | head -20
 2. **禁止**：因代码回滚删除或改写新产生的业务记录
 3. **禁止**：把新版本产生的推荐改标成旧版本
 4. **禁止**：重复推送已经发送的报告
+5. **必须**：回滚前检查是否有正在进行的结算或复盘任务
+6. **必须**：回滚后验证数据库完整性（`PRAGMA integrity_check`）
+
+### 回滚期间数据保护清单
+
+| 数据类型 | 保护措施 |
+|---|---|
+| `predictions`表 | 回滚不删除新记录，只影响新产生的记录 |
+| `prediction_results`表 | 结算逻辑未修改，不受影响 |
+| `daily_reports`表 | 历史报告不变 |
+| `data/*.json` | 推荐历史文件不变 |
+| `data/last_review_sent_*.flag` | 发送标记不变，不会重复推送 |
+| `reports/*.html` | 历史报告文件不变 |
 
 ### 如需数据库迁移（本批不执行）
 
@@ -222,7 +274,17 @@ sqlite3 /Users/yage/Documents/我的预测系统/backups/a_share_pre_v1.2.db \
 
 1. **用户明确授权**：用户必须明确指示"可以部署"或"合并到main"
 2. **审查通过**：FIRST_BATCH_REVIEW.md必须被审查通过
-3. **时间窗口**：建议在非交易时间（15:30后或周末）执行
+3. **测试通过**：27个测试全部通过（20个静态 + 7个真实业务路径）
+4. **时间窗口**：建议在非交易时间（15:30后或周末）执行
+
+### 推荐部署窗口
+
+| 时段 | 说明 |
+|---|---|
+| **首选**：15:30-16:00 | 当日收盘后，次日开盘前 |
+| **次选**：20:00-22:00 | 晚间，无交易影响 |
+| **避免**：09:00-15:00 | 交易时段，不得部署 |
+| **避免**：周五下午 | 周末无法观察效果 |
 
 ### 上线后验证清单
 

@@ -100,44 +100,89 @@ _sector_score(1) = 20.0  # 第一名板块
 
 ## 五、测试命令与结果
 
+### 测试套件说明
+
+本次验收包含**两套测试**，区分"静态逻辑验证"和"真实业务路径验证"：
+
+| 测试文件 | 类型 | 测试数 | 说明 |
+|---|---|---|---|
+| `tests/test_sector_rank_fix.py` | 静态逻辑验证 | 20 | 直接调用评分函数，验证输入→输出关系（复制业务逻辑到测试中） |
+| `tests/test_sector_rank_real_path.py` | 真实业务路径验证 | 7 | Mock外部依赖，调用实际`_top_sectors()`→`build()`→`score_pool()`完整链路 |
+
+**重要区别**：`test_sector_rank_fix.py`中的`TestEgoRankMapping`类在测试内部复制了映射逻辑（`if "sector_rank" not in s and "rank" in s: s["sector_rank"] = s["rank"]`），属于静态验证。`test_sector_rank_real_path.py`调用真实的`CandidatePool._top_sectors()`方法，让数据经过真实业务路径，属于动态验证。
+
 ### 测试命令
 
 ```bash
 cd /Users/yage/Documents/ashare-v1.2-fix-sector-rank
-/Users/yage/Documents/我的预测系统/.venv/bin/python -m pytest tests/test_sector_rank_fix.py -v
+/Users/yage/Documents/我的预测系统/.venv/bin/python -m pytest tests/test_sector_rank_fix.py tests/test_sector_rank_real_path.py -v
 ```
 
 ### 测试结果
 
 ```
-20 passed in 0.01s
+27 passed in 0.02s
 ```
 
-### 测试覆盖
+### 真实业务路径测试覆盖（test_sector_rank_real_path.py）
 
-| 测试类 | 测试项 | 结果 |
-|---|---|---|
-| TestSectorScoreFunction | 第一名板块得20分 | ✅ |
-| TestSectorScoreFunction | 第八名板块得3分 | ✅ |
-| TestSectorScoreFunction | 无排名得默认6分 | ✅ |
-| TestEgoRankMapping | rank正确映射为sector_rank | ✅ |
-| TestEgoRankMapping | 已有sector_rank不被覆盖 | ✅ |
-| TestScoreStockIntegration | 完整路径评分正确 | ✅ |
-| TestRankAffectsSorting | 排名影响排序 | ✅ |
-| TestScorePoolIntegration | 候选池完整流程 | ✅ |
-| TestVersionPropagation | 版本号为v1.2 | ✅ |
-| TestRegression | 评分公式未改变 | ✅ |
+| 测试类 | 测试项 | 验证方式 | 结果 |
+|---|---|---|---|
+| TestRealPathRank1 | rank=1传到评分为20 | 实际_top_sectors()→build()→score_pool() | ✅ |
+| TestRealPathRank8 | rank=8传到评分为3 | 实际_top_sectors()→build()→score_pool() | ✅ |
+| TestRealPathExistingSectorRank | 已有sector_rank不被覆盖 | 逻辑验证 | ✅ |
+| TestRealPathNoRank | 无rank时默认6分 | 实际_top_sectors()→build()→score_pool() | ✅ |
+| TestRealPathRankAffectsSorting | 排名影响总分差17 | 分别构建rank=1和rank=8池比较 | ✅ |
+| TestRealPathOtherFactorsUnchanged | 其他因子计算不变 | 实际build()→score_pool() | ✅ |
+| TestVersionPropagation | 版本号v1.2 | 常量检查 | ✅ |
 
-### 修改前测试为何失败
+### 静态逻辑测试覆盖（test_sector_rank_fix.py）
 
-修改前，ego源返回的`rank`字段未映射为`sector_rank`，导致：
-- `test_ego_rank_mapped_to_sector_rank` 失败
-- `test_stock_with_rank_gets_correct_score` 失败（实际得6分，预期20分）
-- `test_higher_rank_wins_with_same_other_factors` 失败（排序错误）
+| 测试类 | 测试项 | 验证方式 | 结果 |
+|---|---|---|---|
+| TestSectorScoreFunction | _sector_score(1)=20, (8)=3, None=6 | 直接调用函数 | ✅ |
+| TestEgoRankMapping | rank→sector_rank映射 | **复制映射逻辑到测试中**（非真实路径） | ✅ |
+| TestScoreStockIntegration | score_stock完整路径 | 直接调用函数 | ✅ |
+| TestRankAffectsSorting | 排名影响排序 | 直接调用函数 | ✅ |
+| TestScorePoolIntegration | score_pool完整流程 | 直接调用函数 | ✅ |
+| TestVersionPropagation | 版本号传播 | 常量检查 | ✅ |
+| TestRegression | 评分公式不变 | 直接调用函数 | ✅ |
 
-### 修改后测试为何通过
+### 修复前/修复后对比证据（真实业务路径测试）
 
-修改后，`rank`字段正确映射为`sector_rank`，评分函数收到正确的输入，返回正确的板块分。
+**测试方法**：移除`candidate_pool.py`中3行修复代码 → 运行测试 → 恢复修复 → 运行测试
+
+#### 修复前（移除3行映射代码）：4 FAILED, 3 PASSED
+
+```
+FAILED TestRealPathRank1::test_rank_1_propagates_to_score_20
+  AssertionError: 期望sector_rank=1，实际=None
+FAILED TestRealPathRank8::test_rank_8_propagates_to_score_3
+  AssertionError: 期望sector_rank=8，实际=None
+FAILED TestRealPathRankAffectsSorting::test_rank_difference_affects_total_score
+  AssertionError: rank=1板块分应为20，实际=6
+FAILED TestRealPathOtherFactorsUnchanged::test_other_factors_calculation_unchanged
+  AssertionError: 板块分期望20，实际=6
+PASSED TestRealPathExistingSectorRank::test_existing_sector_rank_not_overridden
+PASSED TestRealPathNoRank::test_no_rank_preserves_default_behavior
+PASSED TestVersionPropagation::test_strategy_version_is_v12
+```
+
+**失败原因**：ego源返回的`rank`字段未映射为`sector_rank`，`_top_sectors()`返回的板块数据中`sector_rank=None`，导致`build()`传给股票的`sector_rank=None`，`_sector_score(None)`返回默认6分。
+
+#### 修复后（恢复3行映射代码）：7 PASSED, 0 FAILED
+
+```
+PASSED TestRealPathRank1::test_rank_1_propagates_to_score_20
+PASSED TestRealPathRank8::test_rank_8_propagates_to_score_3
+PASSED TestRealPathExistingSectorRank::test_existing_sector_rank_not_overridden
+PASSED TestRealPathNoRank::test_no_rank_preserves_default_behavior
+PASSED TestRealPathRankAffectsSorting::test_rank_difference_affects_total_score
+PASSED TestRealPathOtherFactorsUnchanged::test_other_factors_calculation_unchanged
+PASSED TestVersionPropagation::test_strategy_version_is_v12
+```
+
+**通过原因**：`rank`字段正确映射为`sector_rank`，数据经过完整业务路径：`ego返回rank` → `_top_sectors()`映射为`sector_rank` → `build()`传给股票 → `score_pool()`计算板块分。
 
 ---
 

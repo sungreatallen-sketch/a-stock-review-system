@@ -142,55 +142,94 @@ sqlite3 /Users/yage/Documents/我的预测系统/data/a_share.db ".backup '/path
 - **批次号**：`fix-sector-rank-v1.2-20260921`
 - **部署日期**：待定（需用户授权）
 - **隔离目录**：`/Users/yage/Documents/ashare-v1.2-fix-sector-rank`
-- **隔离分支**：`fix/sector-rank-v1.2`（提交`9f0a946`）
+- **隔离分支**：`fix/sector-rank-v1.2`（提交`e459f46`）
 
-### 部署前备份（精确路径，非通配符）
+### 定时任务与服务入口（待核实）
 
-```bash
-# 备份批次标识
-BATCH_ID="fix-sector-rank-v1.2-$(date +%Y%m%d%H%M%S)"
-BACKUP_DIR="/Users/yage/Documents/我的预测系统/backups/${BATCH_ID}"
-mkdir -p "${BACKUP_DIR}"
+| 组件 | 类型 | 核实方法 | 状态 |
+|---|---|---|---|
+| `com.ashare.bot` | launchd服务（飞书机器人） | `launchctl list com.ashare.bot` | 运行中（PID 19925） |
+| `com.ashare.server` | launchd服务（Web服务） | `launchctl list com.ashare.server` | 运行中（PID 1521） |
+| `com.ashare.review` | launchd定时任务 | `cat ~/Library/LaunchAgents/com.ashare.review.plist` | ❌ 未核实执行时间 |
+| `com.ashare.settle` | launchd定时任务 | `cat ~/Library/LaunchAgents/com.ashare.settle.plist` | ❌ 未核实执行时间 |
+| `com.ashare.caffeinate` | launchd服务（防休眠） | `launchctl list com.ashare.caffeinate` | 运行中（PID 1512） |
 
-# 备份当前文件（精确路径）
-cp /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py "${BACKUP_DIR}/candidate_pool.py"
-cp /Users/yage/Documents/我的预测系统/app/predict/strategy.py "${BACKUP_DIR}/strategy.py"
+**部署前必须核实**：review和settle任务的执行时间，避免在执行窗口内部署。
 
-# 记录备份校验值
-md5 -r "${BACKUP_DIR}/candidate_pool.py" "${BACKUP_DIR}/strategy.py" > "${BACKUP_DIR}/checksums.txt"
+### 完整部署流程（6步，任一步失败必须中止）
 
-# 预期校验值（备份前验证）：
-# candidate_pool.py: 74e04b2785ac3869a6e1620a824993ea
-# strategy.py: f7183e28a9a644a300265d96a7c3b970
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ 步骤1：阻止新的业务任务进入                                       │
+│   - 停止launchd定时任务：                                        │
+│     launchctl unload ~/Library/LaunchAgents/com.ashare.review.plist│
+│     launchctl unload ~/Library/LaunchAgents/com.ashare.settle.plist│
+│   - 验证任务已停止：                                              │
+│     launchctl list | grep ashare                                │
+│   失败处理：停止部署，恢复任务入口                                  │
+├─────────────────────────────────────────────────────────────────┤
+│ 步骤2：等待在途任务结束                                           │
+│   - 检查是否有正在运行的进程：                                     │
+│     ps aux | grep -E "run_cli|daily|review|settle" | grep -v grep│
+│   - 如果有进程，等待其完成（最长等待30分钟）                         │
+│   - 超时仍未结束：停止部署，恢复任务入口                            │
+├─────────────────────────────────────────────────────────────────┤
+│ 步骤3：备份与校验                                                │
+│   - 备份当前文件（精确路径）：                                     │
+│     BATCH_ID="fix-sector-rank-v1.2-$(date +%Y%m%d%H%M%S)"       │
+│     BACKUP_DIR="/Users/yage/Documents/我的预测系统/backups/${BATCH_ID}"│
+│     mkdir -p "${BACKUP_DIR}"                                    │
+│     cp .../candidate_pool.py "${BACKUP_DIR}/"                    │
+│     cp .../strategy.py "${BACKUP_DIR}/"                          │
+│   - 记录备份校验值：                                              │
+│     md5 -r "${BACKUP_DIR}/candidate_pool.py"                    │
+│       "${BACKUP_DIR}/strategy.py" > "${BACKUP_DIR}/checksums.txt"│
+│   - 验证备份校验值与预期一致：                                     │
+│     candidate_pool.py: 74e04b2785ac3869a6e1620a824993ea          │
+│     strategy.py: f7183e28a9a644a300265d96a7c3b970                │
+│   失败处理：停止部署，无需恢复（备份失败不影响现有文件）              │
+├─────────────────────────────────────────────────────────────────┤
+│ 步骤4：替换两个文件（非原子，需确保一致性）                         │
+│   - 复制新文件到临时位置：                                        │
+│     cp .../candidate_pool.py.new /tmp/candidate_pool.py.new      │
+│     cp .../strategy.py.new /tmp/strategy.py.new                  │
+│   - 校验新文件：                                                 │
+│     md5 -r /tmp/candidate_pool.py.new /tmp/strategy.py.new       │
+│   - 依次替换（间隔<1秒）：                                        │
+│     mv /tmp/candidate_pool.py.new .../candidate_pool.py          │
+│     mv /tmp/strategy.py.new .../strategy.py                      │
+│   注意：两个文件替换之间存在短暂不一致窗口（<1秒）                   │
+│   失败处理：停止部署，从备份恢复（见步骤6）                         │
+├─────────────────────────────────────────────────────────────────┤
+│ 步骤5：校验一致性                                                │
+│   - 验证部署后的校验值：                                         │
+│     md5 -r .../candidate_pool.py .../strategy.py                 │
+│   - 验证版本号：                                                 │
+│     grep "STRATEGY_VERSION" .../strategy.py                     │
+│   - 校验不匹配：立即回滚（见步骤6），不得继续                       │
+├─────────────────────────────────────────────────────────────────┤
+│ 步骤6：恢复服务和任务入口                                         │
+│   - 重启服务（有启动副作用，见下方说明）：                          │
+│     launchctl kickstart -k gui/$(id -u)/com.ashare.bot           │
+│     launchctl kickstart -k gui/$(id -u)/com.ashare.server        │
+│   - 恢复定时任务：                                                │
+│     launchctl load ~/Library/LaunchAgents/com.ashare.review.plist │
+│     launchctl load ~/Library/LaunchAgents/com.ashare.settle.plist │
+│   - 验证服务状态：                                                │
+│     launchctl list | grep ashare                                │
+│   失败处理：停止部署，从备份恢复（见下方回滚步骤）                   │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### 部署步骤（原子操作，避免新旧混合）
+### 服务重启副作用说明
 
-```bash
-# 0. 确认无在途任务（关键：避免读到新旧混合版本）
-# 检查是否有正在运行的预测/复盘/结算任务
-ps aux | grep -E "(run_cli|daily|review|settle)" | grep -v grep
-# 如果有在途任务，等待完成后再部署
+**未经核实**：launchctl kickstart重启服务时是否有业务副作用（如重新初始化连接、清空缓存等）。
 
-# 1. 原子替换：先复制到临时位置，再mv（避免读到半写状态）
-# candidate_pool.py
-cp /Users/yage/Documents/ashare-v1.2-fix-sector-rank/app/predict/candidate_pool.py /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py.new
-mv /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py.new /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py
+**已知行为**：
+- `com.ashare.bot`：重启后会重新连接飞书WebSocket
+- `com.ashare.server`：重启后Web服务短暂不可用（<1秒）
 
-# strategy.py
-cp /Users/yage/Documents/ashare-v1.2-fix-sector-rank/app/predict/strategy.py /Users/yage/Documents/我的预测系统/app/predict/strategy.py.new
-mv /Users/yage/Documents/我的预测系统/app/predict/strategy.py.new /Users/yage/Documents/我的预测系统/app/predict/strategy.py
-
-# 2. 验证部署后的校验值
-md5 -r /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py /Users/yage/Documents/我的预测系统/app/predict/strategy.py
-# 预期校验值：
-# candidate_pool.py: <修复后校验值，部署前计算>
-# strategy.py: <修复后校验值，部署前计算>
-
-# 3. 重启服务（无业务写入）
-launchctl kickstart -k gui/$(id -u)/com.ashare.bot
-launchctl kickstart -k gui/$(id -u)/com.ashare.server
-```
+**建议**：在非交易时段执行重启，避免影响正在进行的预测或结算。
 
 ### 部署后验证（无业务写入）
 
@@ -198,23 +237,34 @@ launchctl kickstart -k gui/$(id -u)/com.ashare.server
 # 1. 检查服务状态
 launchctl list | grep ashare
 
-# 2. 检查版本号（读取文件，不写入）
+# 2. 核对部署文件校验值（生产检查，非隔离目录测试）
+md5 -r /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py \
+       /Users/yage/Documents/我的预测系统/app/predict/strategy.py
+# 应与隔离目录修复后的校验值一致
+
+# 3. 核对版本号
 grep "STRATEGY_VERSION" /Users/yage/Documents/我的预测系统/app/predict/strategy.py
 # 应显示：STRATEGY_VERSION = "v1.2"
 
-# 3. 运行离线测试（不写生产数据库）
-/Users/yage/Documents/我的预测系统/.venv/bin/python -m pytest /Users/yage/Documents/ashare-v1.2-fix-sector-rank/tests/ -v
-
-# 4. 验证报告服务可访问（只读）
-curl -s http://127.0.0.1:8787/health
-# 应返回200
+# 4. 验证报告服务可访问（只读，使用已存在的无写入端点）
+curl -s http://127.0.0.1:8787/
+# 应返回HTML页面（200）
+curl -s http://127.0.0.1:8787/ip
+# 应返回IP信息（200）
 
 # 5. 检查日志无异常（只读）
 tail -20 /Users/yage/ashare-logs/bot.log | grep -i error
 tail -20 /Users/yage/ashare-logs/server.log | grep -i error
 ```
 
-### 回滚步骤（精确备份路径）
+**注意**：
+- `app/server.py`没有`/health`路由，使用`/`或`/ip`端点验证服务可访问性
+- 部署后运行隔离目录测试不等于验证生产加载了新代码，需核对部署文件校验值
+- 当日报告尚未生成导致`/report/<日期>`返回404，不等同于服务故障
+
+### 回滚步骤（保留原始备份）
+
+**原则**：恢复时保留原始备份，复制到目标目录临时文件、校验、再替换；不要直接mv走备份。
 
 ```bash
 # 1. 确认备份批次
@@ -225,39 +275,51 @@ md5 -r "${BACKUP_DIR}/candidate_pool.py" "${BACKUP_DIR}/strategy.py"
 cat "${BACKUP_DIR}/checksums.txt"
 # 两者应一致
 
-# 3. 原子恢复
-mv "${BACKUP_DIR}/candidate_pool.py" /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py
-mv "${BACKUP_DIR}/strategy.py" /Users/yage/Documents/我的预测系统/app/predict/strategy.py
+# 3. 复制备份到临时位置（不直接mv，保留原始备份）
+cp "${BACKUP_DIR}/candidate_pool.py" /tmp/candidate_pool.py.rollback
+cp "${BACKUP_DIR}/strategy.py" /tmp/strategy.py.rollback
 
-# 4. 验证回滚
-md5 -r /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py /Users/yage/Documents/我的预测系统/app/predict/strategy.py
+# 4. 校验临时文件
+md5 -r /tmp/candidate_pool.py.rollback /tmp/strategy.py.rollback
+# 应与checksums.txt一致
+
+# 5. 替换文件
+mv /tmp/candidate_pool.py.rollback /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py
+mv /tmp/strategy.py.rollback /Users/yage/Documents/我的预测系统/app/predict/strategy.py
+
+# 6. 验证回滚
+md5 -r /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py \
+       /Users/yage/Documents/我的预测系统/app/predict/strategy.py
 # 应恢复到原始校验值：
 # candidate_pool.py: 74e04b2785ac3869a6e1620a824993ea
 # strategy.py: f7183e28a9a644a300265d96a7c3b970
+# 校验不匹配必须中止，不得继续
 
-# 5. 重启服务
+# 7. 重启服务
 launchctl kickstart -k gui/$(id -u)/com.ashare.bot
 launchctl kickstart -k gui/$(id -u)/com.ashare.server
 
-# 6. 确认恢复
+# 8. 恢复定时任务（如果部署时已停止）
+launchctl load ~/Library/LaunchAgents/com.ashare.review.plist
+launchctl load ~/Library/LaunchAgents/com.ashare.settle.plist
+
+# 9. 确认恢复
 grep "STRATEGY_VERSION" /Users/yage/Documents/我的预测系统/app/predict/strategy.py
 # 应显示：STRATEGY_VERSION = "v1.1"
 ```
 
 ### 回滚触发条件（需综合判断）
 
-| 故障现象 | 判断方法 | 阈值 | 说明 |
-|---|---|---|---|
-| 板块分异常 | 比较输入排名与输出分数 | 排名1→分数≠20，或排名8→分数≠3 | 不能仅凭"全部相同"判断，需检查输入是否有排名 |
-| 候选池崩溃 | 检查日志`candidate_pool`ERROR | 任何Python异常 | 非超时或网络错误 |
-| 服务不可用 | `curl http://127.0.0.1:8787/health` | 连续3次非200 | 当日报告未生成不算故障 |
-| 飞书推送失败 | 检查日志`bot`ERROR | 连续3次相同错误 | 网络抖动不算 |
+| 故障现象 | 判断方法 | 说明 |
+|---|---|---|
+| 板块分异常 | 比较输入排名与输出分数 | 排名1→分数应为20，排名8→分数应为3；不能仅凭"全部相同"判断 |
+| 候选池崩溃 | 检查日志`candidate_pool`ERROR | Python异常，非超时或网络错误 |
+| 服务不可用 | `curl http://127.0.0.1:8787/` | 连续3次非200；当日报告未生成导致404不算故障 |
+| 飞书推送失败 | 检查日志`bot`ERROR | 连续3次相同错误，网络抖动不算 |
 
-**注意**：当日报告尚未生成导致`/report/<日期>`返回404，不等同于服务故障。应检查`/health`端点。
-
-### 性能阈值说明
-
-当前无历史性能基准数据。部署后首次运行时记录候选池构建时间作为基准，后续对比。
+**注意**：
+- 当日报告尚未生成导致`/report/<日期>`返回404，不等同于服务故障
+- 性能阈值：当前无历史性能基准数据，部署后首次运行时记录候选池构建时间作为基准
 
 ---
 

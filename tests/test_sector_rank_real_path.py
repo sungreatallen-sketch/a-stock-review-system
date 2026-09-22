@@ -335,55 +335,37 @@ class TestRealPathOtherFactorsUnchanged:
         assert factors["质量扣分"] == 0.0, f"质量扣分期望0，实际={factors['质量扣分']}"
 
 
-class TestVersionPropagation:
-    """测试版本传播（使用临时目录验证实际写入）"""
+class TestVersionStorage:
+    """版本存储验证：验证Tracker正确存储版本信息（不等于完整版本传播验证）"""
 
     def test_strategy_version_is_v12(self):
-        """当前策略版本应为v1.2"""
+        """当前策略版本常量应为v1.2"""
         assert STRATEGY_VERSION == "v1.2"
 
-    def test_version_propagates_to_prediction_record(self):
-        """版本号应传播到预测记录中（使用临时目录）"""
+    def test_tracker_stores_version_field(self):
+        """Tracker应正确存储包含版本字段的预测记录"""
         import tempfile
         import json
         from pathlib import Path
 
-        # 使用临时目录，不影响生产数据库
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
-
-            # 创建Tracker实例，使用临时目录
             from app.predict.track import Tracker
             tracker = Tracker(tmp_path)
 
-            # 构造包含STRATEGY_VERSION的预测结果（模拟daily.py的输出）
             prediction = {
                 "date": "2026-09-21",
-                "strategy_version": STRATEGY_VERSION,
-                "targets": [
-                    {"ticker": "000001", "name": "测试股票", "score": 61.0,
-                     "factors": {"板块": 20.0, "个股强度": 21.0}}
-                ],
-                "sector_window": "10日(ego)",
-                "candidate_count": 1,
+                "strategy_version": "v1.2",
+                "targets": [{"ticker": "000001", "name": "测试股票", "score": 61.0}],
             }
+            tracker.record_prediction(prediction)
 
-            # 调用实际的record_prediction()
-            result = tracker.record_prediction(prediction)
-            assert result is True, "record_prediction应返回True"
+            stored = tracker.get_prediction("2026-09-21")
+            assert stored is not None
+            assert stored.get("strategy_version") == "v1.2"
 
-            # 从数据库读取验证
-            conn = tracker._conn()
-            row = conn.execute("SELECT targets FROM predictions WHERE date='2026-09-21'").fetchone()
-            conn.close()
-
-            assert row is not None, "预测记录应已写入"
-            stored = json.loads(row[0])
-            assert stored.get("strategy_version") == "v1.2", \
-                f"存储的版本应为v1.2，实际={stored.get('strategy_version')}"
-
-    def test_historical_v11_predictions_preserved(self):
-        """历史v1.1预测记录应保持原样（使用临时目录）"""
+    def test_tracker_stores_v11_record(self):
+        """Tracker应正确存储v1.1版本记录"""
         import tempfile
         import json
         from pathlib import Path
@@ -393,39 +375,19 @@ class TestVersionPropagation:
             from app.predict.track import Tracker
             tracker = Tracker(tmp_path)
 
-            # 写入模拟的历史v1.1预测
-            old_prediction = {
+            prediction = {
                 "date": "2026-09-20",
                 "strategy_version": "v1.1",
                 "targets": [{"ticker": "000001", "name": "旧股票", "score": 50.0}],
             }
-            tracker.record_prediction(old_prediction)
+            tracker.record_prediction(prediction)
 
-            # 写入新v1.2预测
-            new_prediction = {
-                "date": "2026-09-21",
-                "strategy_version": STRATEGY_VERSION,
-                "targets": [{"ticker": "000002", "name": "新股票", "score": 61.0}],
-            }
-            tracker.record_prediction(new_prediction)
+            stored = tracker.get_prediction("2026-09-20")
+            assert stored is not None
+            assert stored.get("strategy_version") == "v1.1"
 
-            # 验证历史v1.1记录保持不变
-            conn = tracker._conn()
-            rows = conn.execute("SELECT date, targets FROM predictions ORDER BY date").fetchall()
-            conn.close()
-
-            assert len(rows) == 2, f"应有2条记录，实际={len(rows)}"
-
-            old_record = json.loads(rows[0][1])
-            new_record = json.loads(rows[1][1])
-
-            assert old_record.get("strategy_version") == "v1.1", \
-                f"历史v1.1记录应保持不变，实际={old_record.get('strategy_version')}"
-            assert new_record.get("strategy_version") == "v1.2", \
-                f"新记录应为v1.2，实际={new_record.get('strategy_version')}"
-
-    def test_empty_version_predictions_preserved(self):
-        """无版本号的历史预测应保持原样（使用临时目录）"""
+    def test_tracker_stores_record_without_version(self):
+        """Tracker应正确存储无版本字段的记录（不自动添加版本）"""
         import tempfile
         import json
         from pathlib import Path
@@ -435,34 +397,17 @@ class TestVersionPropagation:
             from app.predict.track import Tracker
             tracker = Tracker(tmp_path)
 
-            # 写入无版本号的历史预测
-            no_version_prediction = {
+            prediction = {
                 "date": "2026-09-19",
                 "targets": [{"ticker": "000001", "name": "旧股票", "score": 50.0}],
                 # 无strategy_version字段
             }
-            tracker.record_prediction(no_version_prediction)
+            tracker.record_prediction(prediction)
 
-            # 写入新v1.2预测
-            new_prediction = {
-                "date": "2026-09-21",
-                "strategy_version": STRATEGY_VERSION,
-                "targets": [{"ticker": "000002", "name": "新股票", "score": 61.0}],
-            }
-            tracker.record_prediction(new_prediction)
-
-            # 验证无版本号记录保持不变
-            conn = tracker._conn()
-            rows = conn.execute("SELECT date, targets FROM predictions ORDER BY date").fetchall()
-            conn.close()
-
-            assert len(rows) == 2
-            old_record = json.loads(rows[0][1])
-            new_record = json.loads(rows[1][1])
-
-            assert "strategy_version" not in old_record, \
-                f"无版本号记录不应添加版本字段，实际有={old_record.get('strategy_version')}"
-            assert new_record.get("strategy_version") == "v1.2"
+            stored = tracker.get_prediction("2026-09-19")
+            assert stored is not None
+            assert "strategy_version" not in stored, \
+                f"无版本号记录不应添加版本字段，实际有={stored.get('strategy_version')}"
 
 
 if __name__ == "__main__":

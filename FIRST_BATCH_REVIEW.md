@@ -102,28 +102,30 @@ _sector_score(1) = 20.0  # 第一名板块
 
 ### 测试套件说明
 
-本次验收包含**两套测试**，区分"静态逻辑验证"和"真实业务路径验证"：
+本次验收包含**三套测试**，区分"静态逻辑验证"、"真实业务路径验证"和"版本生成与复用验证"：
 
 | 测试文件 | 类型 | 测试数 | 说明 |
 |---|---|---|---|
 | `tests/test_sector_rank_fix.py` | 静态逻辑验证 | 20 | 直接调用评分函数，验证输入→输出关系 |
-| `tests/test_sector_rank_real_path.py` | 真实业务路径验证 | 11 | Mock外部依赖，调用实际业务方法完整链路 |
+| `tests/test_sector_rank_real_path.py` | 真实业务路径验证 | 11 | Mock外部依赖，调用实际候选池和存储方法 |
+| `tests/test_version_generation.py` | 版本生成与复用验证 | 4 | 调用实际`daily.predict`，验证版本生成和同日复用 |
 
 **关键区别**：
-- `test_sector_rank_fix.py`：直接调用`_sector_score()`、`score_stock()`、`score_pool()`等函数，验证评分公式正确性
-- `test_sector_rank_real_path.py`：调用实际的`CandidatePool._top_sectors()`、`build()`、`Tracker.record_prediction()`，验证数据从业务入口到存储的完整路径
+- `test_sector_rank_fix.py`：直接调用评分函数，验证评分公式正确性
+- `test_sector_rank_real_path.py`：调用实际`CandidatePool._top_sectors()`、`build()`、`Tracker.record_prediction()`，验证数据流
+- `test_version_generation.py`：调用实际`daily.predict()`，验证新预测版本生成、同日复用版本不变、无版本记录不添加版本
 
 ### 测试命令
 
 ```bash
 cd /Users/yage/Documents/ashare-v1.2-fix-sector-rank
-/Users/yage/Documents/我的预测系统/.venv/bin/python -m pytest tests/test_sector_rank_fix.py tests/test_sector_rank_real_path.py -v
+/Users/yage/Documents/我的预测系统/.venv/bin/python -m pytest tests/test_sector_rank_fix.py tests/test_sector_rank_real_path.py tests/test_version_generation.py -v
 ```
 
 ### 测试结果
 
 ```
-31 passed in 0.03s
+35 passed in 0.05s
 ```
 
 ### 真实业务路径测试覆盖（test_sector_rank_real_path.py）
@@ -153,6 +155,20 @@ cd /Users/yage/Documents/ashare-v1.2-fix-sector-rank
 | TestScorePoolIntegration | score_pool完整流程 | 直接调用函数 | ✅ |
 | TestVersionPropagation | 版本号传播 | 常量检查 | ✅ |
 | TestRegression | 评分公式不变 | 直接调用函数 | ✅ |
+
+### 版本生成与复用测试覆盖（test_version_generation.py）
+
+| 测试类 | 测试项 | 验证方式 | 调用的真实方法 | 结果 |
+|---|---|---|---|---|
+| TestVersionGeneration | 新预测生成v1.2 | Mock外部依赖，调用实际predict | `daily.predict()` | ✅ |
+| TestVersionReuse | 同日复用v1.1预测 | 预存v1.1记录，调用实际predict | `daily.predict()` | ✅ |
+| TestVersionReuse | 同日复用无版本记录 | 预存无版本记录，调用实际predict | `daily.predict()` | ✅ |
+| TestVersionStorageNote | 测试范围说明 | 占位 | 无 | ✅ |
+
+**说明**：
+- `TestVersionGeneration`：验证新预测生成时版本为v1.2，调用实际`daily.predict()`并保存到临时数据库
+- `TestVersionReuse`：验证同日复用时版本不变、标的不变，不模拟预测入口及复用判断
+- 复用路径允许补齐参考价、写入执行窗口，测试验证的是版本和标的不变（不要求所有字段完全不变）
 
 ### 修复前/修复后对比证据（真实业务路径测试）
 
@@ -229,11 +245,21 @@ PASSED TestVersionPropagation::test_empty_version_predictions_preserved
 | 事项 | 原因 | 验证时机 |
 |---|---|---|
 | 部署后实际板块分分布 | 需要生产环境运行 | 部署后首次预测 |
-| 定时任务执行时间 | 需要检查launchd配置 | 部署前核实 |
+| 定时任务执行时间 | 需要检查launchd配置（review、settle） | 部署前核实 |
 | 性能基准（候选池构建时间） | 无历史数据 | 部署后首次运行 |
+| 服务重启副作用 | 未经核实kickstart是否有业务副作用 | 部署前核实 |
 | 历史69笔板块分为6的归因 | 需要逐笔分析 | 独立任务 |
 | 回测数据泄漏问题 | 本次修复未涉及 | 后续修复 |
 | 评价口径不一致问题 | 本次修复未涉及 | 后续修复 |
+
+### 本轮新增验证
+
+| 事项 | 验证方式 | 结果 |
+|---|---|---|
+| 版本生成 | 调用实际`daily.predict()`，验证新预测版本为v1.2 | ✅ |
+| 同日复用v1.1 | 预存v1.1记录，调用实际`daily.predict()`，验证版本和标的不变 | ✅ |
+| 同日复用无版本记录 | 预存无版本记录，调用实际`daily.predict()`，验证不添加版本字段 | ✅ |
+| TestRealPathExistingSectorRank | 调用实际`_top_sectors()`，验证已有sector_rank不被覆盖 | ✅（本轮修正） |
 
 ---
 
@@ -258,30 +284,39 @@ PASSED TestVersionPropagation::test_empty_version_predictions_preserved
 ### 部署批次
 
 - **批次号**：`fix-sector-rank-v1.2-20260921`
-- **隔离提交**：`9f0a946`（fix/sector-rank-v1.2分支）
+- **隔离提交**：`e459f46`（fix/sector-rank-v1.2分支）
 
-### 部署步骤（本批不执行，需用户授权）
+### 完整部署流程（6步，任一步失败必须中止）
 
-1. 备份当前文件到`backups/<批次号>/`
-2. 原子替换：先复制到`.new`临时位置，再`mv`替换（避免新旧混合）
-3. 验证校验值
-4. 重启服务
-5. 运行离线测试验证
-
-### 回滚步骤
-
-1. 从`backups/<批次号>/`精确恢复备份文件
-2. 验证校验值恢复到原始值
-3. 重启服务
+1. **阻止新的业务任务进入**：停止launchd定时任务（review、settle）
+2. **等待在途任务结束**：检查是否有正在运行的预测/复盘/结算进程
+3. **备份与校验**：备份当前文件到`backups/<批次号>/`，验证校验值与预期一致
+4. **替换两个文件**：复制到临时位置、校验、依次替换（注意：非原子，存在短暂不一致窗口）
+5. **校验一致性**：验证部署后校验值，不匹配立即回滚
+6. **恢复服务和任务入口**：重启服务、恢复定时任务
 
 ### 部署后验证（无业务写入）
 
+- 核对部署文件校验值（生产检查，非隔离目录测试）
 - 检查服务状态：`launchctl list | grep ashare`
-- 检查版本号：`grep "STRATEGY_VERSION" app/predict/strategy.py`
-- 运行离线测试：`pytest tests/ -v`
-- 检查报告服务：`curl http://127.0.0.1:8787/health`
+- 验证报告服务：`curl http://127.0.0.1:8787/`（返回HTML，200）
+- 检查日志无异常
 
-**注意**：不运行`run_cli.py review --force`或`predict --force`（会写入生产数据库）。
+**注意**：
+- `app/server.py`没有`/health`路由，使用`/`端点验证
+- 不运行`run_cli.py review --force`或`predict --force`（会写入生产数据库）
+- 部署后运行隔离目录测试不等于验证生产加载了新代码
+
+### 回滚步骤
+
+1. 从`backups/<批次号>/`复制备份文件到临时位置（保留原始备份）
+2. 校验临时文件与备份一致
+3. 替换文件，验证校验值恢复到原始值（不匹配必须中止）
+4. 重启服务、恢复定时任务
+
+### 服务重启副作用
+
+**未经核实**：launchctl kickstart重启服务时是否有业务副作用（如重新初始化连接、清空缓存等）。
 
 ### 生产基线
 

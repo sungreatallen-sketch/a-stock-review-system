@@ -1,0 +1,13 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.14, pytest-9.1.1, pluggy-1.6.0 -- /Users/yage/Documents/我的预测系统/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/yage/Documents/ashare-v1.2-fix-sector-rank
+plugins: langsmith-0.11.0, anyio-4.14.2
+collecting ... collected 3 items
+
+tests/test_version_generation.py::TestVersionGeneration::test_new_prediction_generates_v12 PASSED [ 33%]
+tests/test_version_generation.py::TestVersionReuse::test_reuse_v11_prediction_same_day PASSED [ 66%]
+tests/test_version_generation.py::TestVersionReuse::test_reuse_prediction_without_version PASSED [100%]
+
+============================== 3 passed in 0.28s ===============================
+EXIT_CODE=0

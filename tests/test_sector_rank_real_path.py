@@ -164,32 +164,62 @@ class TestRealPathRank8:
 
 
 class TestRealPathExistingSectorRank:
-    """测试已有sector_rank的来源不被覆盖"""
+    """测试已有sector_rank的来源不被覆盖（调用实际_top_sectors()）"""
 
     def test_existing_sector_rank_not_overridden(self):
-        """如果源数据已有sector_rank，不应被rank覆盖"""
-        # 模拟MCP源返回的数据（已有sector_rank）
-        # 这里我们直接测试_top_sectors()的逻辑
-        pool = create_candidate_pool_with_mock_ego([], [])
+        """如果源数据已有sector_rank和rank，_top_sectors()不应覆盖sector_rank"""
+        # 模拟MCP/THS源返回的数据：同时含sector_rank和rank
+        # 这种情况下_top_sectors()的条件"sector_rank" not in s为False，不会执行映射
+        ego_sectors_with_both = [
+            {
+                "sector_rank": 5,  # 已有的sector_rank（MCP/THS源设置）
+                "rank": 2,         # 同时也有rank字段
+                "code": "BK0005",
+                "name": "测试板块",
+                "pct_10d": 5.0,
+            }
+        ]
 
-        # 手动构造一个已有sector_rank的板块（模拟MCP源返回）
-        sector_with_existing_rank = {
-            "sector_rank": 5,
-            "rank": 2,  # 假设也有rank字段
-            "industry": "测试板块",
-            "industry_code": "BK0005",
-            "main_net_inflow": 1e8,
-        }
+        # 创建候选池，使用含sector_rank和rank的mock数据
+        pool = create_candidate_pool_with_mock_ego(ego_sectors_with_both, [
+            {"ticker": "000001", "name": "测试股票", "close": 10.0,
+             "change_ratio": 5.0, "amount": 2e8, "turnover_rate": 10.0}
+        ])
 
-        # 验证映射逻辑不会覆盖已有的sector_rank
-        # 这是_top_sectors()中的逻辑：if "sector_rank" not in s and "rank" in s
-        if "sector_rank" not in sector_with_existing_rank and "rank" in sector_with_existing_rank:
-            sector_with_existing_rank["sector_rank"] = sector_with_existing_rank["rank"]
+        # 调用实际的_top_sectors()方法
+        sectors = pool._top_sectors("2026-09-21")
 
-        # sector_rank应保持原值5，不被rank=2覆盖
-        assert sector_with_existing_rank["sector_rank"] == 5, \
-            f"已有sector_rank不应被覆盖，期望5，实际={sector_with_existing_rank['sector_rank']}"
-        assert sector_with_existing_rank["rank"] == 2, "原rank字段应保留"
+        # 验证sector_rank保持原值5，不被rank=2覆盖
+        assert len(sectors) == 1
+        assert sectors[0].get("sector_rank") == 5, \
+            f"已有sector_rank不应被覆盖，期望5，实际={sectors[0].get('sector_rank')}"
+        # rank字段也应保留
+        assert sectors[0].get("rank") == 2, "原rank字段应保留"
+
+    def test_sector_rank_only_no_rank_field(self):
+        """只有sector_rank没有rank字段时，sector_rank保持不变"""
+        ego_sectors_only_sector_rank = [
+            {
+                "sector_rank": 3,  # 只有sector_rank
+                "code": "BK0003",
+                "name": "测试板块",
+                "pct_10d": 5.0,
+            }
+        ]
+
+        pool = create_candidate_pool_with_mock_ego(ego_sectors_only_sector_rank, [
+            {"ticker": "000001", "name": "测试股票", "close": 10.0,
+             "change_ratio": 5.0, "amount": 2e8, "turnover_rate": 10.0}
+        ])
+
+        sectors = pool._top_sectors("2026-09-21")
+
+        # sector_rank应保持原值3
+        assert len(sectors) == 1
+        assert sectors[0].get("sector_rank") == 3, \
+            f"sector_rank应保持原值3，实际={sectors[0].get('sector_rank')}"
+        # rank字段不应存在
+        assert "rank" not in sectors[0], "无rank字段时不应添加rank"
 
 
 class TestRealPathNoRank:
@@ -306,11 +336,133 @@ class TestRealPathOtherFactorsUnchanged:
 
 
 class TestVersionPropagation:
-    """测试版本传播"""
+    """测试版本传播（使用临时目录验证实际写入）"""
 
     def test_strategy_version_is_v12(self):
         """当前策略版本应为v1.2"""
         assert STRATEGY_VERSION == "v1.2"
+
+    def test_version_propagates_to_prediction_record(self):
+        """版本号应传播到预测记录中（使用临时目录）"""
+        import tempfile
+        import json
+        from pathlib import Path
+
+        # 使用临时目录，不影响生产数据库
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+
+            # 创建Tracker实例，使用临时目录
+            from app.predict.track import Tracker
+            tracker = Tracker(tmp_path)
+
+            # 构造包含STRATEGY_VERSION的预测结果（模拟daily.py的输出）
+            prediction = {
+                "date": "2026-09-21",
+                "strategy_version": STRATEGY_VERSION,
+                "targets": [
+                    {"ticker": "000001", "name": "测试股票", "score": 61.0,
+                     "factors": {"板块": 20.0, "个股强度": 21.0}}
+                ],
+                "sector_window": "10日(ego)",
+                "candidate_count": 1,
+            }
+
+            # 调用实际的record_prediction()
+            result = tracker.record_prediction(prediction)
+            assert result is True, "record_prediction应返回True"
+
+            # 从数据库读取验证
+            conn = tracker._conn()
+            row = conn.execute("SELECT targets FROM predictions WHERE date='2026-09-21'").fetchone()
+            conn.close()
+
+            assert row is not None, "预测记录应已写入"
+            stored = json.loads(row[0])
+            assert stored.get("strategy_version") == "v1.2", \
+                f"存储的版本应为v1.2，实际={stored.get('strategy_version')}"
+
+    def test_historical_v11_predictions_preserved(self):
+        """历史v1.1预测记录应保持原样（使用临时目录）"""
+        import tempfile
+        import json
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            from app.predict.track import Tracker
+            tracker = Tracker(tmp_path)
+
+            # 写入模拟的历史v1.1预测
+            old_prediction = {
+                "date": "2026-09-20",
+                "strategy_version": "v1.1",
+                "targets": [{"ticker": "000001", "name": "旧股票", "score": 50.0}],
+            }
+            tracker.record_prediction(old_prediction)
+
+            # 写入新v1.2预测
+            new_prediction = {
+                "date": "2026-09-21",
+                "strategy_version": STRATEGY_VERSION,
+                "targets": [{"ticker": "000002", "name": "新股票", "score": 61.0}],
+            }
+            tracker.record_prediction(new_prediction)
+
+            # 验证历史v1.1记录保持不变
+            conn = tracker._conn()
+            rows = conn.execute("SELECT date, targets FROM predictions ORDER BY date").fetchall()
+            conn.close()
+
+            assert len(rows) == 2, f"应有2条记录，实际={len(rows)}"
+
+            old_record = json.loads(rows[0][1])
+            new_record = json.loads(rows[1][1])
+
+            assert old_record.get("strategy_version") == "v1.1", \
+                f"历史v1.1记录应保持不变，实际={old_record.get('strategy_version')}"
+            assert new_record.get("strategy_version") == "v1.2", \
+                f"新记录应为v1.2，实际={new_record.get('strategy_version')}"
+
+    def test_empty_version_predictions_preserved(self):
+        """无版本号的历史预测应保持原样（使用临时目录）"""
+        import tempfile
+        import json
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            from app.predict.track import Tracker
+            tracker = Tracker(tmp_path)
+
+            # 写入无版本号的历史预测
+            no_version_prediction = {
+                "date": "2026-09-19",
+                "targets": [{"ticker": "000001", "name": "旧股票", "score": 50.0}],
+                # 无strategy_version字段
+            }
+            tracker.record_prediction(no_version_prediction)
+
+            # 写入新v1.2预测
+            new_prediction = {
+                "date": "2026-09-21",
+                "strategy_version": STRATEGY_VERSION,
+                "targets": [{"ticker": "000002", "name": "新股票", "score": 61.0}],
+            }
+            tracker.record_prediction(new_prediction)
+
+            # 验证无版本号记录保持不变
+            conn = tracker._conn()
+            rows = conn.execute("SELECT date, targets FROM predictions ORDER BY date").fetchall()
+            conn.close()
+
+            assert len(rows) == 2
+            old_record = json.loads(rows[0][1])
+            new_record = json.loads(rows[1][1])
+
+            assert "strategy_version" not in old_record, \
+                f"无版本号记录不应添加版本字段，实际有={old_record.get('strategy_version')}"
+            assert new_record.get("strategy_version") == "v1.2"
 
 
 if __name__ == "__main__":

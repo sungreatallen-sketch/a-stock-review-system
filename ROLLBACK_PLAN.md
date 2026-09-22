@@ -137,83 +137,127 @@ sqlite3 /Users/yage/Documents/我的预测系统/data/a_share.db ".backup '/path
 
 ## 五、部署与回滚步骤
 
-### 部署步骤（需用户授权）
+### 部署批次标识
+
+- **批次号**：`fix-sector-rank-v1.2-20260921`
+- **部署日期**：待定（需用户授权）
+- **隔离目录**：`/Users/yage/Documents/ashare-v1.2-fix-sector-rank`
+- **隔离分支**：`fix/sector-rank-v1.2`（提交`9f0a946`）
+
+### 部署前备份（精确路径，非通配符）
 
 ```bash
-# 1. 切换到生产目录
-cd /Users/yage/Documents/我的预测系统
+# 备份批次标识
+BATCH_ID="fix-sector-rank-v1.2-$(date +%Y%m%d%H%M%S)"
+BACKUP_DIR="/Users/yage/Documents/我的预测系统/backups/${BATCH_ID}"
+mkdir -p "${BACKUP_DIR}"
 
-# 2. 备份当前代码
-cp app/predict/candidate_pool.py app/predict/candidate_pool.py.bak.$(date +%Y%m%d%H%M%S)
-cp app/predict/strategy.py app/predict/strategy.py.bak.$(date +%Y%m%d%H%M%S)
+# 备份当前文件（精确路径）
+cp /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py "${BACKUP_DIR}/candidate_pool.py"
+cp /Users/yage/Documents/我的预测系统/app/predict/strategy.py "${BACKUP_DIR}/strategy.py"
 
-# 3. 从隔离目录复制修复文件
-cp /Users/yage/Documents/ashare-v1.2-fix-sector-rank/app/predict/candidate_pool.py app/predict/
-cp /Users/yage/Documents/ashare-v1.2-fix-sector-rank/app/predict/strategy.py app/predict/
+# 记录备份校验值
+md5 -r "${BACKUP_DIR}/candidate_pool.py" "${BACKUP_DIR}/strategy.py" > "${BACKUP_DIR}/checksums.txt"
 
-# 4. 验证文件校验值
-md5 -r app/predict/candidate_pool.py app/predict/strategy.py
-# 应显示修复后的校验值
-
-# 5. 重启服务
-launchctl kickstart -k gui/$(id -u)/com.ashare.bot
-launchctl kickstart -k gui/$(id -u)/com.ashare.server
-
-# 6. 验证部署
-grep "STRATEGY_VERSION" app/predict/strategy.py
-# 应显示：STRATEGY_VERSION = "v1.2"
-
-# 7. 运行一次完整预测验证
-/Users/yage/Documents/我的预测系统/.venv/bin/python run_cli.py predict --force
-
-# 8. 检查报告中板块分是否不再全部为6
-sqlite3 data/a_share.db "SELECT json_extract(targets, '$.targets[0].factors.板块') FROM predictions ORDER BY date DESC LIMIT 3;"
+# 预期校验值（备份前验证）：
+# candidate_pool.py: 74e04b2785ac3869a6e1620a824993ea
+# strategy.py: f7183e28a9a644a300265d96a7c3b970
 ```
 
-### 回滚步骤
+### 部署步骤（原子操作，避免新旧混合）
 
 ```bash
-# 1. 切换到生产目录
-cd /Users/yage/Documents/我的预测系统
+# 0. 确认无在途任务（关键：避免读到新旧混合版本）
+# 检查是否有正在运行的预测/复盘/结算任务
+ps aux | grep -E "(run_cli|daily|review|settle)" | grep -v grep
+# 如果有在途任务，等待完成后再部署
 
-# 2. 恢复备份文件
-cp app/predict/candidate_pool.py.bak.* app/predict/candidate_pool.py
-cp app/predict/strategy.py.bak.* app/predict/strategy.py
+# 1. 原子替换：先复制到临时位置，再mv（避免读到半写状态）
+# candidate_pool.py
+cp /Users/yage/Documents/ashare-v1.2-fix-sector-rank/app/predict/candidate_pool.py /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py.new
+mv /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py.new /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py
 
-# 3. 验证回滚
-md5 -r app/predict/candidate_pool.py app/predict/strategy.py
-# 应恢复到原始校验值：
-# 74e04b2785ac3869a6e1620a824993ea candidate_pool.py
-# f7183e28a9a644a300265d96a7c3b970 strategy.py
+# strategy.py
+cp /Users/yage/Documents/ashare-v1.2-fix-sector-rank/app/predict/strategy.py /Users/yage/Documents/我的预测系统/app/predict/strategy.py.new
+mv /Users/yage/Documents/我的预测系统/app/predict/strategy.py.new /Users/yage/Documents/我的预测系统/app/predict/strategy.py
 
-# 4. 重启服务
+# 2. 验证部署后的校验值
+md5 -r /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py /Users/yage/Documents/我的预测系统/app/predict/strategy.py
+# 预期校验值：
+# candidate_pool.py: <修复后校验值，部署前计算>
+# strategy.py: <修复后校验值，部署前计算>
+
+# 3. 重启服务（无业务写入）
 launchctl kickstart -k gui/$(id -u)/com.ashare.bot
 launchctl kickstart -k gui/$(id -u)/com.ashare.server
-
-# 5. 确认恢复
-grep "STRATEGY_VERSION" app/predict/strategy.py
-# 应显示：STRATEGY_VERSION = "v1.1"
 ```
 
-### 确认恢复验证清单
+### 部署后验证（无业务写入）
 
 ```bash
 # 1. 检查服务状态
 launchctl list | grep ashare
 
-# 2. 检查版本号
-grep "STRATEGY_VERSION" app/predict/strategy.py
+# 2. 检查版本号（读取文件，不写入）
+grep "STRATEGY_VERSION" /Users/yage/Documents/我的预测系统/app/predict/strategy.py
+# 应显示：STRATEGY_VERSION = "v1.2"
 
-# 3. 运行回归测试
-/Users/yage/Documents/我的预测系统/.venv/bin/python -m pytest tests/ -v
+# 3. 运行离线测试（不写生产数据库）
+/Users/yage/Documents/我的预测系统/.venv/bin/python -m pytest /Users/yage/Documents/ashare-v1.2-fix-sector-rank/tests/ -v
 
-# 4. 验证报告服务
-curl -s http://127.0.0.1:8787/report/$(date +%Y-%m-%d) | head -20
+# 4. 验证报告服务可访问（只读）
+curl -s http://127.0.0.1:8787/health
+# 应返回200
 
-# 5. 检查日志无异常
+# 5. 检查日志无异常（只读）
 tail -20 /Users/yage/ashare-logs/bot.log | grep -i error
 tail -20 /Users/yage/ashare-logs/server.log | grep -i error
 ```
+
+### 回滚步骤（精确备份路径）
+
+```bash
+# 1. 确认备份批次
+BACKUP_DIR="/Users/yage/Documents/我的预测系统/backups/fix-sector-rank-v1.2-<时间戳>"
+
+# 2. 验证备份完整性
+md5 -r "${BACKUP_DIR}/candidate_pool.py" "${BACKUP_DIR}/strategy.py"
+cat "${BACKUP_DIR}/checksums.txt"
+# 两者应一致
+
+# 3. 原子恢复
+mv "${BACKUP_DIR}/candidate_pool.py" /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py
+mv "${BACKUP_DIR}/strategy.py" /Users/yage/Documents/我的预测系统/app/predict/strategy.py
+
+# 4. 验证回滚
+md5 -r /Users/yage/Documents/我的预测系统/app/predict/candidate_pool.py /Users/yage/Documents/我的预测系统/app/predict/strategy.py
+# 应恢复到原始校验值：
+# candidate_pool.py: 74e04b2785ac3869a6e1620a824993ea
+# strategy.py: f7183e28a9a644a300265d96a7c3b970
+
+# 5. 重启服务
+launchctl kickstart -k gui/$(id -u)/com.ashare.bot
+launchctl kickstart -k gui/$(id -u)/com.ashare.server
+
+# 6. 确认恢复
+grep "STRATEGY_VERSION" /Users/yage/Documents/我的预测系统/app/predict/strategy.py
+# 应显示：STRATEGY_VERSION = "v1.1"
+```
+
+### 回滚触发条件（需综合判断）
+
+| 故障现象 | 判断方法 | 阈值 | 说明 |
+|---|---|---|---|
+| 板块分异常 | 比较输入排名与输出分数 | 排名1→分数≠20，或排名8→分数≠3 | 不能仅凭"全部相同"判断，需检查输入是否有排名 |
+| 候选池崩溃 | 检查日志`candidate_pool`ERROR | 任何Python异常 | 非超时或网络错误 |
+| 服务不可用 | `curl http://127.0.0.1:8787/health` | 连续3次非200 | 当日报告未生成不算故障 |
+| 飞书推送失败 | 检查日志`bot`ERROR | 连续3次相同错误 | 网络抖动不算 |
+
+**注意**：当日报告尚未生成导致`/report/<日期>`返回404，不等同于服务故障。应检查`/health`端点。
+
+### 性能阈值说明
+
+当前无历史性能基准数据。部署后首次运行时记录候选池构建时间作为基准，后续对比。
 
 ---
 
@@ -274,17 +318,32 @@ sqlite3 /Users/yage/Documents/我的预测系统/backups/a_share_pre_v1.2.db \
 
 1. **用户明确授权**：用户必须明确指示"可以部署"或"合并到main"
 2. **审查通过**：FIRST_BATCH_REVIEW.md必须被审查通过
-3. **测试通过**：27个测试全部通过（20个静态 + 7个真实业务路径）
-4. **时间窗口**：建议在非交易时间（15:30后或周末）执行
+3. **测试通过**：全部测试通过（静态 + 真实业务路径）
+4. **无在途任务**：确认无正在运行的预测/复盘/结算任务
 
-### 推荐部署窗口
+### 部署窗口（待核实）
 
-| 时段 | 说明 |
-|---|---|
-| **首选**：15:30-16:00 | 当日收盘后，次日开盘前 |
-| **次选**：20:00-22:00 | 晚间，无交易影响 |
-| **避免**：09:00-15:00 | 交易时段，不得部署 |
-| **避免**：周五下午 | 周末无法观察效果 |
+**当前状态**：定时任务的具体执行时间未在代码中明确定义，以下为待核实项。
+
+| 定时任务 | 预期执行时间 | 核实方法 | 状态 |
+|---|---|---|---|
+| 定时复盘（`com.ashare.review`） | 待核实 | `launchctl list com.ashare.review` 或检查plist | ❌ 未核实 |
+| 定时结算（`com.ashare.settle`） | 待核实 | `launchctl list com.ashare.settle` 或检查plist | ❌ 未核实 |
+| 飞书推送 | 随复盘触发 | - | - |
+
+**部署窗口选择原则**：
+1. 避开定时任务执行时间
+2. 避开交易时段（09:30-15:00）
+3. 部署后有足够时间观察（至少1小时）
+4. 建议在用户可监控的时段执行
+
+**核实方法**：
+```bash
+# 检查launchd定时任务配置
+ls ~/Library/LaunchAgents/ | grep ashare
+cat ~/Library/LaunchAgents/com.ashare.review.plist
+cat ~/Library/LaunchAgents/com.ashare.settle.plist
+```
 
 ### 上线后验证清单
 
